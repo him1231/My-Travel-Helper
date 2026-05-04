@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { nanoid } from 'nanoid'
-import { ChevronLeft, LayoutList, Link2, MapPin, Printer, StickyNote, Clock, UserPlus } from 'lucide-react'
+import { ChevronLeft, Calendar, LayoutList, Link2, MapPin, Printer, StickyNote, Clock, UserPlus } from 'lucide-react'
 import {
   DndContext, PointerSensor, useSensor, useSensors,
   type DragEndEvent, closestCenter,
@@ -19,7 +19,7 @@ import TripMap from '@/components/TripMap'
 import TimelineView from '@/components/TimelineView'
 import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, reorderActivities } from '@/lib/firestore/trips'
 import type { Trip, Day, Activity, POI } from '@/lib/types'
-import { todayISO, addDaysISO, formatDateISO, formatMoney } from '@/lib/utils'
+import { todayISO, addDaysISO, formatDateISO, formatMoney, exportIcal } from '@/lib/utils'
 
 export default function TripDetail() {
   const { tripId } = useParams<{ tripId: string }>()
@@ -335,6 +335,14 @@ export default function TripDetail() {
             >
               <Printer className="h-4 w-4" />
               Print
+            </button>
+            <button
+              onClick={() => exportIcal(trip.title, days)}
+              className="print-hide flex items-center gap-1 text-sm text-slate-600 hover:text-sky-600"
+              title="Export iCal"
+            >
+              <Calendar className="h-4 w-4" />
+              iCal
             </button>
             <button onClick={handleDeleteTrip} className="print-hide text-sm text-red-600 hover:underline">Delete trip</button>
           </div>
