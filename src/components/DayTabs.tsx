@@ -1,32 +1,44 @@
-import { Plus } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import clsx from 'clsx'
 import type { Day } from '@/lib/types'
 import { formatDateISO } from '@/lib/utils'
 
 export default function DayTabs({
-  days, selectedId, onSelect, onAddDay,
+  days, selectedId, onSelect, onAddDay, onRemoveDay,
 }: {
   days: Day[]
   selectedId: string | null
   onSelect: (id: string) => void
   onAddDay: () => void
+  onRemoveDay?: (id: string) => void
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       {days.map((d, i) => (
-        <button
-          key={d.id}
-          onClick={() => onSelect(d.id)}
-          className={clsx(
-            'rounded-lg border px-3 py-1.5 text-sm transition',
-            selectedId === d.id
-              ? 'border-sky-500 bg-sky-50 text-sky-700'
-              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+        <div key={d.id} className="group relative">
+          <button
+            onClick={() => onSelect(d.id)}
+            className={clsx(
+              'rounded-lg border py-1.5 text-sm transition',
+              onRemoveDay && days.length > 1 ? 'pl-3 pr-7' : 'px-3',
+              selectedId === d.id
+                ? 'border-sky-500 bg-sky-50 text-sky-700'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+            )}
+          >
+            <span className="font-medium">Day {i + 1}</span>
+            <span className="ml-2 text-xs text-slate-500">{formatDateISO(d.date)}</span>
+          </button>
+          {onRemoveDay && days.length > 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onRemoveDay(d.id) }}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
+              aria-label={`Remove day ${i + 1}`}
+            >
+              <X className="h-3 w-3" />
+            </button>
           )}
-        >
-          <span className="font-medium">Day {i + 1}</span>
-          <span className="ml-2 text-xs text-slate-500">{formatDateISO(d.date)}</span>
-        </button>
+        </div>
       ))}
       <button
         onClick={onAddDay}

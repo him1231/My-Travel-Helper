@@ -9,7 +9,7 @@ import ActivityCard from '@/components/ActivityCard'
 import ActivityEditModal from '@/components/ActivityEditModal'
 import PlacesAutocomplete from '@/components/PlacesAutocomplete'
 import TripMap from '@/components/TripMap'
-import { subscribeTrip, subscribeDays, addDay, addActivity, deleteTrip } from '@/lib/firestore/trips'
+import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip } from '@/lib/firestore/trips'
 import type { Trip, Day, Activity, POI } from '@/lib/types'
 import { todayISO, addDaysISO, formatDateISO } from '@/lib/utils'
 
@@ -75,6 +75,25 @@ export default function TripDetail() {
     } catch (e) {
       console.error(e)
       toast.error('Failed to add day')
+    }
+  }
+
+  const handleRemoveDay = async (dayId: string) => {
+    const day = days.find((d) => d.id === dayId)
+    const actCount = day?.activities.length ?? 0
+    const msg = actCount > 0
+      ? `Remove this day and its ${actCount} activit${actCount === 1 ? 'y' : 'ies'}?`
+      : 'Remove this day?'
+    if (!confirm(msg)) return
+    try {
+      await removeDay(tripId, dayId)
+      if (selectedDayId === dayId) {
+        const remaining = days.filter((d) => d.id !== dayId)
+        setSelectedDayId(remaining[0]?.id ?? null)
+      }
+    } catch (e) {
+      console.error(e)
+      toast.error('Failed to remove day')
     }
   }
 
@@ -153,6 +172,7 @@ export default function TripDetail() {
             selectedId={selectedDayId}
             onSelect={setSelectedDayId}
             onAddDay={handleAddDay}
+            onRemoveDay={handleRemoveDay}
           />
           <div className="ml-auto w-full sm:w-72">
             <PlacesAutocomplete onSelect={handleAddPOI} placeholder="Search to add a stop…" />
