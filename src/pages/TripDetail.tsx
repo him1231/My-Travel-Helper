@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { nanoid } from 'nanoid'
-import { ChevronDown, ChevronLeft, Calendar, Cloud, Compass, LayoutList, Link2, LogOut, MapPin, Printer, StickyNote, Clock, UserPlus } from 'lucide-react'
+import { ChevronDown, ChevronLeft, Calendar, Cloud, Compass, LayoutGrid, LayoutList, Link2, LogOut, MapPin, Printer, StickyNote, Clock, UserPlus } from 'lucide-react'
 import {
   DndContext, PointerSensor, useSensor, useSensors,
   type DragEndEvent, closestCenter,
@@ -14,12 +14,13 @@ import { useAuth } from '@/hooks/useAuth'
 import DayTabs from '@/components/DayTabs'
 import ActivityCard from '@/components/ActivityCard'
 import ActivityEditModal from '@/components/ActivityEditModal'
+import OverviewView from '@/components/OverviewView'
 import PlacesAutocomplete from '@/components/PlacesAutocomplete'
 import TripMap from '@/components/TripMap'
 import TimelineView from '@/components/TimelineView'
 import NearbyDrawer from '@/components/NearbyDrawer'
 import WeatherWidget from '@/components/WeatherWidget'
-import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, reorderActivities } from '@/lib/firestore/trips'
+import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, reorderActivities, updateActivity, moveActivityBetweenDays } from '@/lib/firestore/trips'
 import type { Trip, Day, Activity, POI } from '@/lib/types'
 import { todayISO, addDaysISO, formatDateISO, formatMoney, exportIcal } from '@/lib/utils'
 
@@ -78,6 +79,8 @@ export default function TripDetail() {
   const [activitiesOpen, setActivitiesOpen] = useState(true)
   const [budgetOpen, setBudgetOpen] = useState(true)
   const [checklistOpen, setChecklistOpen] = useState(true)
+  const [showOverview, setShowOverview] = useState(false)
+  const fetchingRoutesRef = useRef<Set<string>>(new Set())
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -108,10 +111,20 @@ export default function TripDetail() {
     () => days.find((d) => d.id === selectedDayId) ?? null,
     [days, selectedDayId],
   )
-  const editingActivity = useMemo(
-    () => localActivities.find((a) => a.id === editingActivityId) ?? null,
-    [localActivities, editingActivityId],
-  )
+  const editingActivity = useMemo(() => {
+    if (!editingActivityId) return null
+    // Search all days so overview-mode edits work correctly
+    for (const d of days) {
+      const found = d.activities.find((a) => a.id === editingActivityId)
+      if (found) return found
+    }
+    return null
+  }, [days, editingActivityId])
+
+  const editingDay = useMemo(() => {
+    if (!editingActivityId) return null
+    return days.find((d) => d.activities.some((a) => a.id === editingActivityId)) ?? null
+  }, [days, editingActivityId])
   const selectedPOI = useMemo(
     () => localActivities.find((a) => a.id === selectedActivityId)?.poi ?? null,
     [localActivities, selectedActivityId],
@@ -143,6 +156,60 @@ export default function TripDetail() {
       setLocalActivities(selectedDay.activities) // rollback
     }
   }
+
+  // Auto-fetch drive routes for transport activities that have mode=drive but no polyline yet
+  useEffect(() => {
+    if (!tripId || !selectedDay) return
+    const pending = selectedDay.activities.filter(
+      (a) => a.type === 'transport' && a.route?.mode === 'drive' && !a.route.polyline,
+    )
+    if (pending.length === 0) return
+    if (typeof google === 'undefined' || !google.maps?.DirectionsService) return
+
+    pending.forEach((activity) => {
+      if (fetchingRoutesRef.current.has(activity.id)) return
+      const idx = selectedDay.activities.indexOf(activity)
+      let prevPOI: POI | undefined
+      for (let j = idx - 1; j >= 0; j--) {
+        if (selectedDay.activities[j].poi) { prevPOI = selectedDay.activities[j].poi; break }
+      }
+      let nextPOI: POI | undefined
+      for (let j = idx + 1; j < selectedDay.activities.length; j++) {
+        if (selectedDay.activities[j].poi) { nextPOI = selectedDay.activities[j].poi; break }
+      }
+      if (!prevPOI || !nextPOI) return
+
+      fetchingRoutesRef.current.add(activity.id)
+      const ds = new google.maps.DirectionsService()
+      ds.route(
+        {
+          origin: { lat: prevPOI.lat, lng: prevPOI.lng },
+          destination: { lat: nextPOI.lat, lng: nextPOI.lng },
+          travelMode: google.maps.TravelMode.DRIVING,
+        },
+        async (result, status) => {
+          fetchingRoutesRef.current.delete(activity.id)
+          if (status !== 'OK' || !result) return
+          const polyline: { lat: number; lng: number }[] = []
+          result.routes[0].legs.forEach((leg) => {
+            leg.steps.forEach((step, i) => {
+              if (i === 0) polyline.push({ lat: step.start_location.lat(), lng: step.start_location.lng() })
+              polyline.push({ lat: step.end_location.lat(), lng: step.end_location.lng() })
+            })
+          })
+          const distanceM = result.routes[0].legs[0].distance?.value
+          const durationS = result.routes[0].legs[0].duration?.value
+          try {
+            await updateActivity(tripId, selectedDay, activity.id, {
+              route: { mode: 'drive', polyline, distanceM, durationS },
+            })
+          } catch (e) {
+            console.error('Failed to save drive route', e)
+          }
+        },
+      )
+    })
+  }, [selectedDay, tripId])
 
   if (loading) return <div className="grid h-screen place-items-center text-slate-500">Loading…</div>
   if (missing || !trip || !tripId) {
@@ -322,6 +389,18 @@ export default function TripDetail() {
     }
   }
 
+  const handleMoveActivity = async (activityId: string, fromDayId: string, toDayId: string) => {
+    const fromDay = days.find((d) => d.id === fromDayId)
+    const toDay = days.find((d) => d.id === toDayId)
+    if (!fromDay || !toDay) return
+    try {
+      await moveActivityBetweenDays(tripId, fromDay, toDay, activityId)
+    } catch (e) {
+      console.error(e)
+      toast.error('Failed to move activity')
+    }
+  }
+
   return (
     <div className="flex h-screen flex-col">
       {/* Combined app + trip header */}
@@ -360,6 +439,13 @@ export default function TripDetail() {
 
           {/* Actions + user */}
           <div className="flex flex-shrink-0 items-center gap-0.5">
+            <button
+              onClick={() => setShowOverview((v) => !v)}
+              title={showOverview ? 'Day view' : 'Trip overview'}
+              className={`rounded p-1.5 transition ${showOverview ? 'text-sky-500 hover:bg-sky-50' : 'text-slate-400 hover:bg-slate-100'}`}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
             {trip.destination && (
               <button
                 onClick={() => setWeatherVisible((v) => !v)}
@@ -466,7 +552,20 @@ export default function TripDetail() {
         </div>
       )}
 
-      <div className="grid flex-1 grid-cols-1 overflow-hidden md:grid-cols-[minmax(360px,40%)_1fr]">
+      {showOverview ? (
+        <div className={`flex-1 overflow-hidden bg-slate-50 ${mobileTab === 'list' ? 'block' : 'hidden md:block'}`}>
+          <OverviewView
+            days={days}
+            onMoveActivity={handleMoveActivity}
+            onSelectActivity={(activityId, dayId) => {
+              setSelectedDayId(dayId)
+              setEditingActivityId(activityId)
+            }}
+          />
+        </div>
+      ) : null}
+
+      <div className={`grid flex-1 grid-cols-1 overflow-hidden md:grid-cols-[minmax(360px,40%)_1fr] ${showOverview ? 'hidden' : ''}`}>
         <aside className={`print-area overflow-y-auto border-r border-slate-200 bg-slate-50 p-4 ${mobileTab === 'list' ? 'block' : 'hidden md:block'}`}>
           {!selectedDay ? (
             <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
@@ -723,27 +822,34 @@ export default function TripDetail() {
       {/* Mobile bottom tab bar */}
       <nav className="print-hide fixed bottom-0 left-0 right-0 z-30 flex border-t border-slate-200 bg-white md:hidden">
         <button
-          onClick={() => setMobileTab('list')}
-          className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-xs ${mobileTab === 'list' ? 'text-sky-600' : 'text-slate-500'}`}
+          onClick={() => { setMobileTab('list'); setShowOverview(false) }}
+          className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-xs ${mobileTab === 'list' && !showOverview ? 'text-sky-600' : 'text-slate-500'}`}
         >
           <LayoutList className="h-5 w-5" />
           List
         </button>
         <button
-          onClick={() => setMobileTab('map')}
-          className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-xs ${mobileTab === 'map' ? 'text-sky-600' : 'text-slate-500'}`}
+          onClick={() => { setMobileTab('list'); setShowOverview(true) }}
+          className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-xs ${showOverview ? 'text-sky-600' : 'text-slate-500'}`}
+        >
+          <LayoutGrid className="h-5 w-5" />
+          Overview
+        </button>
+        <button
+          onClick={() => { setMobileTab('map'); setShowOverview(false) }}
+          className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-xs ${mobileTab === 'map' && !showOverview ? 'text-sky-600' : 'text-slate-500'}`}
         >
           <MapPin className="h-5 w-5" />
           Map
         </button>
       </nav>
 
-      {selectedDay && (
+      {editingDay && (
         <ActivityEditModal
           open={!!editingActivity}
           onClose={() => setEditingActivityId(null)}
           tripId={tripId}
-          day={selectedDay}
+          day={editingDay}
           activity={editingActivity}
           currency={trip.currency}
         />

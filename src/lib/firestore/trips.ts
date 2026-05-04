@@ -149,6 +149,19 @@ export async function reorderActivities(tripId: string, day: Day, orderedIds: st
   await setDayActivities(tripId, day.id, activities)
 }
 
+export async function moveActivityBetweenDays(
+  tripId: string, fromDay: Day, toDay: Day, activityId: string,
+): Promise<void> {
+  const activity = fromDay.activities.find((a) => a.id === activityId)
+  if (!activity) return
+  const fromActivities = fromDay.activities.filter((a) => a.id !== activityId)
+  const toActivities = [...toDay.activities, { ...activity, order: toDay.activities.length }]
+  const batch = writeBatch(db)
+  batch.set(doc(daysCol(tripId), fromDay.id), { activities: stripUndefinedDeep(fromActivities) }, { merge: true })
+  batch.set(doc(daysCol(tripId), toDay.id), { activities: stripUndefinedDeep(toActivities) }, { merge: true })
+  await batch.commit()
+}
+
 export async function getTripByShareToken(token: string): Promise<Trip | null> {
   const q = query(tripsCol, where('shareToken', '==', token))
   const snap = await getDocs(q)
