@@ -363,6 +363,59 @@ export default function TripDetail() {
               </div>
             )
           })()}
+
+          {/* Checklist */}
+          {trip && (() => {
+            const checklist = trip.checklist ?? []
+            const doneCount = checklist.filter((i) => i.done).length
+            return (
+              <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-700">
+                    Checklist {checklist.length > 0 && <span className="ml-1 text-slate-400">({doneCount}/{checklist.length})</span>}
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  {checklist.map((item) => (
+                    <div key={item.id} className="flex items-center gap-2 group">
+                      <input
+                        type="checkbox"
+                        checked={item.done}
+                        onChange={async () => {
+                          const updated = checklist.map((c) => c.id === item.id ? { ...c, done: !c.done } : c)
+                          try { await updateTrip(tripId!, { checklist: updated }) } catch (e) { console.error(e) }
+                        }}
+                        className="h-3.5 w-3.5 rounded accent-sky-600 cursor-pointer"
+                      />
+                      <span className={`flex-1 text-xs ${item.done ? 'line-through text-slate-400' : 'text-slate-700'}`}>{item.text}</span>
+                      <button
+                        onClick={async () => {
+                          const updated = checklist.filter((c) => c.id !== item.id)
+                          try { await updateTrip(tripId!, { checklist: updated }) } catch (e) { console.error(e) }
+                        }}
+                        className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition text-xs"
+                        aria-label="Remove item"
+                      >✕</button>
+                    </div>
+                  ))}
+                </div>
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault()
+                    const input = (e.currentTarget.elements.namedItem('newItem') as HTMLInputElement)
+                    const text = input.value.trim()
+                    if (!text) return
+                    const updated = [...checklist, { id: nanoid(8), text, done: false }]
+                    try { await updateTrip(tripId!, { checklist: updated }); input.value = '' } catch (err) { console.error(err) }
+                  }}
+                  className="mt-2 flex gap-2"
+                >
+                  <input name="newItem" placeholder="Add item…" className="input flex-1 py-1 text-xs" />
+                  <button type="submit" className="rounded-lg bg-sky-600 px-2 py-1 text-xs font-medium text-white hover:bg-sky-700">Add</button>
+                </form>
+              </div>
+            )
+          })()}
         </aside>
 
         <section className="relative">
