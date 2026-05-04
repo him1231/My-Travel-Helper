@@ -17,6 +17,7 @@ import ActivityEditModal from '@/components/ActivityEditModal'
 import PlacesAutocomplete from '@/components/PlacesAutocomplete'
 import TripMap from '@/components/TripMap'
 import TimelineView from '@/components/TimelineView'
+import NearbyDrawer from '@/components/NearbyDrawer'
 import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, reorderActivities } from '@/lib/firestore/trips'
 import type { Trip, Day, Activity, POI } from '@/lib/types'
 import { todayISO, addDaysISO, formatDateISO, formatMoney, exportIcal } from '@/lib/utils'
@@ -38,6 +39,7 @@ export default function TripDetail() {
   const [localActivities, setLocalActivities] = useState<Activity[]>([])
   const [categoryFilter, setCategoryFilter] = useState<string>('')
   const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list')
+  const [nearbyOpen, setNearbyOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteBusy, setInviteBusy] = useState(false)
@@ -74,6 +76,10 @@ export default function TripDetail() {
   const editingActivity = useMemo(
     () => localActivities.find((a) => a.id === editingActivityId) ?? null,
     [localActivities, editingActivityId],
+  )
+  const selectedPOI = useMemo(
+    () => localActivities.find((a) => a.id === selectedActivityId)?.poi ?? null,
+    [localActivities, selectedActivityId],
   )
 
   // Sync local notes state when selected day changes
@@ -396,23 +402,43 @@ export default function TripDetail() {
               {/* View mode toggle */}
               <div className="mb-3 flex items-center justify-between">
                 <span className="text-xs font-medium text-slate-500">{localActivities.length} {localActivities.length === 1 ? 'stop' : 'stops'}</span>
-                <div className="flex rounded-lg border border-slate-200 bg-white text-xs">
-                  <button
-                    onClick={() => setViewMode('list')}
-                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-l-lg transition ${viewMode === 'list' ? 'bg-sky-50 text-sky-700' : 'text-slate-500 hover:bg-slate-50'}`}
-                    title="List view"
-                  >
-                    <LayoutList className="h-3.5 w-3.5" /> List
-                  </button>
-                  <button
-                    onClick={() => setViewMode('timeline')}
-                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-r-lg border-l border-slate-200 transition ${viewMode === 'timeline' ? 'bg-sky-50 text-sky-700' : 'text-slate-500 hover:bg-slate-50'}`}
-                    title="Timeline view"
-                  >
-                    <Clock className="h-3.5 w-3.5" /> Timeline
-                  </button>
+                <div className="flex items-center gap-2">
+                  {selectedPOI && (
+                    <button
+                      onClick={() => setNearbyOpen((o) => !o)}
+                      className="print-hide rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                      title="Discover nearby places"
+                    >
+                      {nearbyOpen ? 'Hide nearby' : '🔍 Nearby'}
+                    </button>
+                  )}
+                  <div className="flex rounded-lg border border-slate-200 bg-white text-xs">
+                    <button
+                      onClick={() => setViewMode('list')}
+                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-l-lg transition ${viewMode === 'list' ? 'bg-sky-50 text-sky-700' : 'text-slate-500 hover:bg-slate-50'}`}
+                      title="List view"
+                    >
+                      <LayoutList className="h-3.5 w-3.5" /> List
+                    </button>
+                    <button
+                      onClick={() => setViewMode('timeline')}
+                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-r-lg border-l border-slate-200 transition ${viewMode === 'timeline' ? 'bg-sky-50 text-sky-700' : 'text-slate-500 hover:bg-slate-50'}`}
+                      title="Timeline view"
+                    >
+                      <Clock className="h-3.5 w-3.5" /> Timeline
+                    </button>
+                  </div>
                 </div>
               </div>
+
+              {/* Nearby suggestions drawer */}
+              {nearbyOpen && selectedPOI && (
+                <NearbyDrawer
+                  center={{ lat: selectedPOI.lat, lng: selectedPOI.lng }}
+                  onAdd={(poi) => { handleAddPOI(poi); setNearbyOpen(false) }}
+                  onClose={() => setNearbyOpen(false)}
+                />
+              )}
 
               {viewMode === 'timeline' ? (
                 <TimelineView
