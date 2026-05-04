@@ -11,6 +11,7 @@ const daysCol = (tripId: string) => collection(db, 'trips', tripId, 'days')
 
 export type NewTripInput = {
   title: string
+  description?: string
   destination?: POI
   startDate?: string
   endDate?: string
@@ -24,7 +25,7 @@ export async function createTrip(uid: string, input: NewTripInput): Promise<stri
     memberIds: [uid],
     shareToken: null,
     title: input.title,
-    description: '',
+    description: input.description ?? '',
     coverPhotoUrl: '',
     destination: input.destination ?? null,
     startDate: input.startDate ?? null,

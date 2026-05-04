@@ -17,6 +17,7 @@ export default function NewTripModal({
 }) {
   const { user } = useAuth()
   const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
   const [destination, setDestination] = useState<POI | null>(null)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -25,7 +26,7 @@ export default function NewTripModal({
   const [busy, setBusy] = useState(false)
 
   const reset = () => {
-    setTitle(''); setDestination(null); setStartDate(''); setEndDate(''); setCurrency('USD'); setBudgetLimit('')
+    setTitle(''); setDescription(''); setDestination(null); setStartDate(''); setEndDate(''); setCurrency('USD'); setBudgetLimit('')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -39,6 +40,7 @@ export default function NewTripModal({
     try {
       const id = await createTrip(user.uid, {
         title: title.trim(),
+        description: description.trim() || undefined,
         destination: destination ?? undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
@@ -79,6 +81,16 @@ export default function NewTripModal({
             className="input"
             autoFocus
             required
+          />
+        </Field>
+
+        <Field label="Description (optional)">
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={2}
+            placeholder="A short summary of the trip…"
+            className="input"
           />
         </Field>
 

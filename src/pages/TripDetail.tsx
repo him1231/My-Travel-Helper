@@ -222,6 +222,9 @@ export default function TripDetail() {
             </button>
             <div className="min-w-0">
               <h1 className="truncate text-lg font-semibold">{trip.title}</h1>
+              {trip.description && (
+                <p className="mt-0.5 line-clamp-1 text-xs text-slate-500">{trip.description}</p>
+              )}
               <div className="flex items-center gap-2 text-xs text-slate-500">
                 {trip.destination && (
                   <>
