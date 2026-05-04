@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { nanoid } from 'nanoid'
-import { ChevronLeft, Link2, MapPin, StickyNote } from 'lucide-react'
+import { ChevronLeft, Link2, MapPin, StickyNote, UserPlus } from 'lucide-react'
 import {
   DndContext, PointerSensor, useSensor, useSensors,
   type DragEndEvent, closestCenter,
 } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
+import { collection, getDocs, query, where } from 'firebase/firestore'
+import { db } from '@/lib/firebase'
 import Header from '@/components/Header'
 import DayTabs from '@/components/DayTabs'
 import ActivityCard from '@/components/ActivityCard'
@@ -34,6 +36,9 @@ export default function TripDetail() {
   // Optimistic local copy of activities for smooth DnD
   const [localActivities, setLocalActivities] = useState<Activity[]>([])
   const [categoryFilter, setCategoryFilter] = useState<string>('')
+  const [inviteOpen, setInviteOpen] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteBusy, setInviteBusy] = useState(false)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -209,6 +214,38 @@ export default function TripDetail() {
     }
   }
 
+  const handleInvite = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!trip || !tripId) return
+    const email = inviteEmail.trim().toLowerCase()
+    if (!email) return
+    setInviteBusy(true)
+    try {
+      const q = query(collection(db, 'users'), where('email', '==', email))
+      const snap = await getDocs(q)
+      if (snap.empty) {
+        toast.error('No user found with that email')
+        setInviteBusy(false)
+        return
+      }
+      const uid = snap.docs[0].id
+      if (trip.memberIds.includes(uid)) {
+        toast('This person is already a member')
+        setInviteBusy(false)
+        return
+      }
+      await updateTrip(tripId, { memberIds: [...trip.memberIds, uid] })
+      toast.success('Member added!')
+      setInviteEmail('')
+      setInviteOpen(false)
+    } catch (e) {
+      toast.error('Invite failed')
+      console.error(e)
+    } finally {
+      setInviteBusy(false)
+    }
+  }
+
   return (
     <div className="flex h-screen flex-col">
       <Header />
@@ -247,6 +284,14 @@ export default function TripDetail() {
             >
               <Link2 className="h-4 w-4" />
               Share
+            </button>
+            <button
+              onClick={() => setInviteOpen(true)}
+              className="flex items-center gap-1 text-sm text-slate-600 hover:text-sky-600"
+              title="Invite member"
+            >
+              <UserPlus className="h-4 w-4" />
+              Invite
             </button>
             <button onClick={handleDeleteTrip} className="text-sm text-red-600 hover:underline">Delete trip</button>
           </div>
@@ -471,6 +516,43 @@ export default function TripDetail() {
           activity={editingActivity}
           currency={trip.currency}
         />
+      )}
+
+      {/* Invite member modal */}
+      {inviteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="text-lg font-semibold">Invite member</h2>
+            <p className="mt-1 text-sm text-slate-500">Enter the email of a registered user to give them access to this trip.</p>
+            <form onSubmit={handleInvite} className="mt-4 space-y-3">
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="email@example.com"
+                className="input"
+                autoFocus
+                required
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setInviteOpen(false); setInviteEmail('') }}
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={inviteBusy}
+                  className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+                >
+                  {inviteBusy ? 'Inviting…' : 'Invite'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   )
