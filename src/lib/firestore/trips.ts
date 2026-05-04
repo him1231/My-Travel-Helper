@@ -48,10 +48,22 @@ export async function createTrip(uid: string, input: NewTripInput): Promise<stri
 }
 
 export function subscribeUserTrips(uid: string, cb: (trips: Trip[]) => void) {
-  const q = query(tripsCol, where('memberIds', 'array-contains', uid), orderBy('createdAt', 'desc'))
-  return onSnapshot(q, (snap) => {
-    cb(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Trip, 'id'>) })))
-  })
+  // orderBy('createdAt') combined with array-contains needs a composite index — sort client-side instead
+  const q = query(tripsCol, where('memberIds', 'array-contains', uid))
+  return onSnapshot(
+    q,
+    (snap) => {
+      const trips = snap.docs
+        .map((d) => ({ id: d.id, ...(d.data() as Omit<Trip, 'id'>) }))
+        .sort((a, b) => {
+          const at = a.createdAt?.toMillis() ?? 0
+          const bt = b.createdAt?.toMillis() ?? 0
+          return bt - at
+        })
+      cb(trips)
+    },
+    (err) => { console.error('subscribeUserTrips:', err); cb([]) },
+  )
 }
 
 export function subscribeTrip(tripId: string, cb: (trip: Trip | null) => void) {
