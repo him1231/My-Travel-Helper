@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { nanoid } from 'nanoid'
-import { ChevronLeft, MapPin, StickyNote } from 'lucide-react'
+import { ChevronLeft, Link2, MapPin, StickyNote } from 'lucide-react'
 import {
   DndContext, PointerSensor, useSensor, useSensors,
   type DragEndEvent, closestCenter,
@@ -14,7 +14,7 @@ import ActivityCard from '@/components/ActivityCard'
 import ActivityEditModal from '@/components/ActivityEditModal'
 import PlacesAutocomplete from '@/components/PlacesAutocomplete'
 import TripMap from '@/components/TripMap'
-import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateDayNotes, reorderActivities } from '@/lib/firestore/trips'
+import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, reorderActivities } from '@/lib/firestore/trips'
 import type { Trip, Day, Activity, POI } from '@/lib/types'
 import { todayISO, addDaysISO, formatDateISO } from '@/lib/utils'
 
@@ -178,6 +178,26 @@ export default function TripDetail() {
     }, 600)
   }
 
+  const handleShareTrip = async () => {
+    if (!trip || !tripId) return
+    let token = trip.shareToken
+    if (!token) {
+      token = nanoid(12)
+      try {
+        await updateTrip(tripId, { shareToken: token })
+      } catch (e) {
+        toast.error('Could not generate share link'); return
+      }
+    }
+    const url = `${window.location.origin}${window.location.pathname.replace(/\/trips.*/, '')}#/shared/${token}`
+    try {
+      await navigator.clipboard.writeText(url)
+      toast.success('Share link copied to clipboard!')
+    } catch {
+      toast.error(`Share link: ${url}`)
+    }
+  }
+
   const handleDeleteTrip = async () => {
     if (!confirm('Delete this trip permanently?')) return
     try {
@@ -215,7 +235,17 @@ export default function TripDetail() {
               </div>
             </div>
           </div>
-          <button onClick={handleDeleteTrip} className="text-sm text-red-600 hover:underline">Delete trip</button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleShareTrip}
+              className="flex items-center gap-1 text-sm text-slate-600 hover:text-sky-600"
+              title="Copy share link"
+            >
+              <Link2 className="h-4 w-4" />
+              Share
+            </button>
+            <button onClick={handleDeleteTrip} className="text-sm text-red-600 hover:underline">Delete trip</button>
+          </div>
         </div>
       </div>
 

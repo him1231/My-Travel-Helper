@@ -145,3 +145,17 @@ export async function reorderActivities(tripId: string, day: Day, orderedIds: st
     .filter((a): a is Activity => a !== null)
   await setDayActivities(tripId, day.id, activities)
 }
+
+export async function getTripByShareToken(token: string): Promise<Trip | null> {
+  const q = query(tripsCol, where('shareToken', '==', token))
+  const snap = await getDocs(q)
+  if (snap.empty) return null
+  const d = snap.docs[0]
+  return { id: d.id, ...(d.data() as Omit<Trip, 'id'>) }
+}
+
+export async function getDaysForTrip(tripId: string): Promise<Day[]> {
+  const q = query(daysCol(tripId), orderBy('date'))
+  const snap = await getDocs(q)
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Day, 'id'>) }))
+}
