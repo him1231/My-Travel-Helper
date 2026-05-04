@@ -18,6 +18,7 @@ import PlacesAutocomplete from '@/components/PlacesAutocomplete'
 import TripMap from '@/components/TripMap'
 import TimelineView from '@/components/TimelineView'
 import NearbyDrawer from '@/components/NearbyDrawer'
+import WeatherWidget from '@/components/WeatherWidget'
 import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, reorderActivities } from '@/lib/firestore/trips'
 import type { Trip, Day, Activity, POI } from '@/lib/types'
 import { todayISO, addDaysISO, formatDateISO, formatMoney, exportIcal } from '@/lib/utils'
@@ -386,6 +387,15 @@ export default function TripDetail() {
           </div>
         </div>
       </div>
+
+      {/* Weather strip */}
+      {trip.destination && (
+        <div className="border-b border-slate-200 bg-slate-50 px-4 py-2">
+          <div className="mx-auto max-w-7xl">
+            <WeatherWidget lat={trip.destination.lat} lng={trip.destination.lng} />
+          </div>
+        </div>
+      )}
 
       <div className="grid flex-1 grid-cols-1 overflow-hidden md:grid-cols-[minmax(360px,40%)_1fr]">
         <aside className={`print-area overflow-y-auto border-r border-slate-200 bg-slate-50 p-4 ${mobileTab === 'list' ? 'block' : 'hidden md:block'}`}>
