@@ -1,4 +1,4 @@
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate, useLocation } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { Compass } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
@@ -6,13 +6,15 @@ import { useAuth } from '@/hooks/useAuth'
 export default function Login() {
   const { user, signIn } = useAuth()
   const nav = useNavigate()
+  const location = useLocation()
+  const from = (location.state as { from?: string } | null)?.from ?? '/trips'
 
   if (user) return <Navigate to="/trips" replace />
 
   const handleSignIn = async () => {
     try {
       await signIn()
-      nav('/trips')
+      nav(from, { replace: true })
     } catch (e) {
       toast.error('Sign-in failed')
       console.error(e)
