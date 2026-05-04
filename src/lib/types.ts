@@ -16,6 +16,13 @@ export type POI = {
 
 export type Money = { amount: number; currency: string }
 
+export type RouteInfo = {
+  mode: 'straight' | 'drive'
+  polyline?: { lat: number; lng: number }[]
+  distanceM?: number
+  durationS?: number
+}
+
 export type Activity = {
   id: string
   order: number
@@ -27,6 +34,7 @@ export type Activity = {
   cost?: Money
   notes?: string
   photos?: string[]
+  route?: RouteInfo
 }
 
 export type Day = {

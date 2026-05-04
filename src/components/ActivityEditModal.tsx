@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { X } from 'lucide-react'
 import Modal from '@/components/Modal'
-import type { Activity, ActivityCategory, Day } from '@/lib/types'
+import type { Activity, ActivityCategory, Day, RouteInfo } from '@/lib/types'
 import { updateActivity, removeActivity } from '@/lib/firestore/trips'
 
 const CATEGORIES: { value: ActivityCategory; label: string; emoji: string }[] = [
@@ -31,6 +31,7 @@ export default function ActivityEditModal({
   const [notes, setNotes] = useState('')
   const [photos, setPhotos] = useState<string[]>([])
   const [photoInput, setPhotoInput] = useState('')
+  const [routeMode, setRouteMode] = useState<'straight' | 'drive'>('straight')
 
   useEffect(() => {
     if (!activity) return
@@ -42,6 +43,7 @@ export default function ActivityEditModal({
     setNotes(activity.notes ?? '')
     setPhotos(activity.photos ?? (activity.poi?.photoUrl ? [activity.poi.photoUrl] : []))
     setPhotoInput('')
+    setRouteMode(activity.route?.mode ?? 'straight')
   }, [activity])
 
   if (!activity) return null
@@ -66,6 +68,15 @@ export default function ActivityEditModal({
       }
       if (activity.poi && category) {
         patch.poi = { ...activity.poi, category: category as ActivityCategory }
+      }
+      if (activity.type === 'transport') {
+        const prevMode = activity.route?.mode ?? 'straight'
+        if (routeMode !== prevMode) {
+          // Clear polyline when switching modes so it gets re-fetched if drive
+          patch.route = { mode: routeMode } as RouteInfo
+        } else if (!activity.route) {
+          patch.route = { mode: routeMode } as RouteInfo
+        }
       }
       await updateActivity(tripId, day, activity.id, patch)
       onClose()
@@ -138,6 +149,32 @@ export default function ActivityEditModal({
         <Field label="Notes">
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className="input" />
         </Field>
+
+        {/* Route mode — transport only */}
+        {activity.type === 'transport' && (
+          <div>
+            <span className="text-sm font-medium text-slate-700">Map route</span>
+            <div className="mt-1 flex gap-2">
+              {(['straight', 'drive'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setRouteMode(mode)}
+                  className={`flex items-center gap-1 rounded-full border px-3 py-1 text-xs transition ${
+                    routeMode === mode
+                      ? 'border-sky-500 bg-sky-50 text-sky-700'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                  }`}
+                >
+                  {mode === 'straight' ? '📏 Straight line' : '🛣️ Drive route'}
+                </button>
+              ))}
+            </div>
+            {routeMode === 'drive' && !activity.route?.polyline && (
+              <p className="mt-1 text-xs text-slate-400">Route will be fetched automatically after saving.</p>
+            )}
+          </div>
+        )}
 
         {/* Photo URLs */}
         <div>

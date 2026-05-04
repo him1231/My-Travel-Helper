@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react'
-import { Map, Marker, useMap } from '@vis.gl/react-google-maps'
+import { Map, Marker, Polyline, useMap } from '@vis.gl/react-google-maps'
 import type { Activity, POI } from '@/lib/types'
 
 type Props = {
@@ -9,11 +9,39 @@ type Props = {
   fallbackCenter?: { lat: number; lng: number }
 }
 
+type Segment = {
+  path: { lat: number; lng: number }[]
+  mode: 'straight' | 'drive'
+}
+
 export default function TripMap({ activities, selectedId, onSelectActivity, fallbackCenter }: Props) {
   const points = useMemo(
     () => activities.map((a) => a.poi).filter((p): p is POI => !!p),
     [activities],
   )
+
+  const segments = useMemo<Segment[]>(() => {
+    const result: Segment[] = []
+    for (let i = 0; i < activities.length; i++) {
+      const a = activities[i]
+      if (a.type !== 'transport') continue
+      let prev: POI | undefined
+      for (let j = i - 1; j >= 0; j--) {
+        if (activities[j].poi) { prev = activities[j].poi; break }
+      }
+      let next: POI | undefined
+      for (let j = i + 1; j < activities.length; j++) {
+        if (activities[j].poi) { next = activities[j].poi; break }
+      }
+      if (!prev || !next) continue
+      const mode = a.route?.mode ?? 'straight'
+      const path = (mode === 'drive' && a.route?.polyline?.length)
+        ? a.route.polyline
+        : [{ lat: prev.lat, lng: prev.lng }, { lat: next.lat, lng: next.lng }]
+      result.push({ path, mode })
+    }
+    return result
+  }, [activities])
 
   return (
     <Map
@@ -24,6 +52,16 @@ export default function TripMap({ activities, selectedId, onSelectActivity, fall
       style={{ width: '100%', height: '100%' }}
     >
       <FitToPoints points={points} fallbackCenter={fallbackCenter} />
+      {segments.map((seg, i) => (
+        <Polyline
+          key={i}
+          path={seg.path}
+          strokeColor={seg.mode === 'drive' ? '#10b981' : '#3b82f6'}
+          strokeOpacity={seg.mode === 'drive' ? 0.85 : 0.55}
+          strokeWeight={seg.mode === 'drive' ? 4 : 2}
+          geodesic
+        />
+      ))}
       {activities.map((a, idx) =>
         a.poi ? (
           <Marker
