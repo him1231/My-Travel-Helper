@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { nanoid } from 'nanoid'
-import { ChevronLeft, Calendar, Cloud, Compass, LayoutList, Link2, LogOut, MapPin, Printer, StickyNote, Clock, UserPlus } from 'lucide-react'
+import { ChevronDown, ChevronLeft, Calendar, Cloud, Compass, LayoutList, Link2, LogOut, MapPin, Printer, StickyNote, Clock, UserPlus } from 'lucide-react'
 import {
   DndContext, PointerSensor, useSensor, useSensors,
   type DragEndEvent, closestCenter,
@@ -22,6 +22,34 @@ import WeatherWidget from '@/components/WeatherWidget'
 import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, reorderActivities } from '@/lib/firestore/trips'
 import type { Trip, Day, Activity, POI } from '@/lib/types'
 import { todayISO, addDaysISO, formatDateISO, formatMoney, exportIcal } from '@/lib/utils'
+
+function SectionHeader({
+  title, open, onToggle, badge, icon,
+}: {
+  title: string
+  open: boolean
+  onToggle: () => void
+  badge?: string | number
+  icon?: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className="flex w-full items-center justify-between rounded py-1.5 text-left hover:text-slate-900"
+    >
+      <div className="flex items-center gap-1.5">
+        {icon}
+        <span className="text-xs font-semibold text-slate-700">{title}</span>
+        {badge != null && (
+          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">{badge}</span>
+        )}
+      </div>
+      <ChevronDown
+        className={`h-3.5 w-3.5 flex-shrink-0 text-slate-400 transition-transform duration-150 ${open ? '' : '-rotate-90'}`}
+      />
+    </button>
+  )
+}
 
 export default function TripDetail() {
   const { tripId } = useParams<{ tripId: string }>()
@@ -47,6 +75,9 @@ export default function TripDetail() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteBusy, setInviteBusy] = useState(false)
   const [weatherVisible, setWeatherVisible] = useState(true)
+  const [activitiesOpen, setActivitiesOpen] = useState(true)
+  const [budgetOpen, setBudgetOpen] = useState(true)
+  const [checklistOpen, setChecklistOpen] = useState(true)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -448,7 +479,13 @@ export default function TripDetail() {
             </div>
           ) : (
             <>
-              {/* View mode toggle */}
+              <SectionHeader
+                title="Stops"
+                open={activitiesOpen}
+                onToggle={() => setActivitiesOpen((o) => !o)}
+                badge={localActivities.length}
+              />
+              {activitiesOpen && <>{/* View mode toggle */}
               <div className="mb-3 flex items-center justify-between">
                 <span className="text-xs font-medium text-slate-500">{localActivities.length} {localActivities.length === 1 ? 'stop' : 'stops'}</span>
                 <div className="flex items-center gap-2">
@@ -542,21 +579,19 @@ export default function TripDetail() {
                   </DndContext>
                 </>
               )}
+              </>}
             </>
           )}
 
           {selectedDay && (
             <div className="mt-4">
-              <button
-                onClick={() => setNotesOpen((o) => !o)}
-                className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-900"
-              >
-                <StickyNote className="h-3.5 w-3.5" />
-                {notesOpen ? 'Hide day notes' : 'Day notes'}
-                {!notesOpen && dayNotesValue && (
-                  <span className="ml-1 rounded-full bg-sky-100 px-1.5 py-0.5 text-sky-700">&#10003;</span>
-                )}
-              </button>
+              <SectionHeader
+                title="Day notes"
+                open={notesOpen}
+                onToggle={() => setNotesOpen((o) => !o)}
+                badge={!notesOpen && dayNotesValue ? '✓' : undefined}
+                icon={<StickyNote className="h-3.5 w-3.5 text-slate-400" />}
+              />
               {notesOpen && (
                 <textarea
                   value={dayNotesValue}
@@ -580,8 +615,9 @@ export default function TripDetail() {
             const overBudget = budgetLimit && tripTotal > budgetLimit
             const pct = budgetLimit ? Math.min(100, (tripTotal / budgetLimit) * 100) : 0
             return (
-              <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3 text-xs">
-                <div className="mb-2 font-semibold text-slate-700">Budget summary</div>
+              <div className="mt-4">
+                <SectionHeader title="Budget" open={budgetOpen} onToggle={() => setBudgetOpen((o) => !o)} badge={tripTotal > 0 ? formatMoney(tripTotal, currency) : undefined} />
+              {budgetOpen && <div className="mt-2 rounded-lg border border-slate-200 bg-white p-3 text-xs">
                 {(selectedDay?.activities ?? []).filter((a) => (a.cost?.amount ?? 0) > 0).map((a) => (
                   <div key={a.id} className="flex justify-between py-0.5 text-slate-600">
                     <span className="truncate pr-2">{a.title}</span>
@@ -612,6 +648,7 @@ export default function TripDetail() {
                     </div>
                   </>
                 )}
+              </div>}
               </div>
             )
           })()}
@@ -621,12 +658,14 @@ export default function TripDetail() {
             const checklist = trip.checklist ?? []
             const doneCount = checklist.filter((i) => i.done).length
             return (
-              <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-700">
-                    Checklist {checklist.length > 0 && <span className="ml-1 text-slate-400">({doneCount}/{checklist.length})</span>}
-                  </span>
-                </div>
+              <div className="mt-4">
+                <SectionHeader
+                  title="Checklist"
+                  open={checklistOpen}
+                  onToggle={() => setChecklistOpen((o) => !o)}
+                  badge={checklist.length > 0 ? `${doneCount}/${checklist.length}` : undefined}
+                />
+              {checklistOpen && <div className="mt-2 rounded-lg border border-slate-200 bg-white p-3">
                 <div className="space-y-1">
                   {checklist.map((item) => (
                     <div key={item.id} className="flex items-center gap-2 group">
@@ -665,6 +704,7 @@ export default function TripDetail() {
                   <input name="newItem" placeholder="Add item…" className="input flex-1 py-1 text-xs" />
                   <button type="submit" className="rounded-lg bg-sky-600 px-2 py-1 text-xs font-medium text-white hover:bg-sky-700">Add</button>
                 </form>
+              </div>}
               </div>
             )
           })()}
