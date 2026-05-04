@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { nanoid } from 'nanoid'
-import { ChevronLeft, Calendar, LayoutList, Link2, MapPin, Printer, StickyNote, Clock, UserPlus } from 'lucide-react'
+import { ChevronLeft, Calendar, Cloud, Compass, LayoutList, Link2, LogOut, MapPin, Printer, StickyNote, Clock, UserPlus } from 'lucide-react'
 import {
   DndContext, PointerSensor, useSensor, useSensors,
   type DragEndEvent, closestCenter,
@@ -10,7 +10,7 @@ import {
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { collection, getDocs, query, where } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
-import Header from '@/components/Header'
+import { useAuth } from '@/hooks/useAuth'
 import DayTabs from '@/components/DayTabs'
 import ActivityCard from '@/components/ActivityCard'
 import ActivityEditModal from '@/components/ActivityEditModal'
@@ -26,6 +26,7 @@ import { todayISO, addDaysISO, formatDateISO, formatMoney, exportIcal } from '@/
 export default function TripDetail() {
   const { tripId } = useParams<{ tripId: string }>()
   const nav = useNavigate()
+  const { user, signOut } = useAuth()
   const [trip, setTrip] = useState<Trip | null>(null)
   const [days, setDays] = useState<Day[]>([])
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null)
@@ -45,6 +46,7 @@ export default function TripDetail() {
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteBusy, setInviteBusy] = useState(false)
+  const [weatherVisible, setWeatherVisible] = useState(true)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -291,68 +293,104 @@ export default function TripDetail() {
 
   return (
     <div className="flex h-screen flex-col">
-      <Header />
+      {/* Combined app + trip header */}
+      <div className="border-b border-slate-200 bg-white print:hidden">
+        <div className="mx-auto flex max-w-7xl items-center gap-2 px-4 py-2.5">
+          {/* Logo + back */}
+          <Link to="/trips" className="flex-shrink-0 text-sky-600" title="All trips">
+            <Compass className="h-5 w-5" />
+          </Link>
+          <button
+            onClick={() => nav('/trips')}
+            className="flex flex-shrink-0 items-center gap-0.5 text-sm text-slate-500 hover:text-slate-900"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            <span className="hidden sm:inline">Trips</span>
+          </button>
+          <div className="mx-1 hidden h-5 w-px flex-shrink-0 bg-slate-200 sm:block" />
 
-      <div className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <button onClick={() => nav('/trips')} className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900">
-              <ChevronLeft className="h-4 w-4" />
-              Trips
-            </button>
-            <div className="min-w-0">
-              <h1 className="truncate text-lg font-semibold">{trip.title}</h1>
-              {trip.description && (
-                <p className="mt-0.5 line-clamp-1 text-xs text-slate-500">{trip.description}</p>
+          {/* Trip info */}
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-base font-semibold leading-tight">{trip.title}</h1>
+            <div className="flex items-center gap-1.5 text-xs text-slate-500">
+              {trip.destination && (
+                <>
+                  <MapPin className="h-3 w-3 flex-shrink-0" />
+                  <span className="truncate">{trip.destination.name}</span>
+                </>
               )}
-              <div className="flex items-center gap-2 text-xs text-slate-500">
-                {trip.destination && (
-                  <>
-                    <MapPin className="h-3 w-3" />
-                    <span className="truncate">{trip.destination.name}</span>
-                    {trip.startDate && <span>·</span>}
-                  </>
-                )}
-                {trip.startDate && (
-                  <span>{formatDateISO(trip.startDate)}{trip.endDate ? ` – ${formatDateISO(trip.endDate)}` : ''}</span>
-                )}
-              </div>
+              {trip.startDate && (
+                <span className="hidden sm:inline">
+                  {trip.destination && '·'} {formatDateISO(trip.startDate)}{trip.endDate ? ` – ${formatDateISO(trip.endDate)}` : ''}
+                </span>
+              )}
             </div>
           </div>
-          <div className="flex items-center gap-3">
+
+          {/* Actions + user */}
+          <div className="flex flex-shrink-0 items-center gap-0.5">
+            {trip.destination && (
+              <button
+                onClick={() => setWeatherVisible((v) => !v)}
+                title={weatherVisible ? 'Hide weather' : 'Show weather'}
+                className={`rounded p-1.5 transition ${weatherVisible ? 'text-sky-500 hover:bg-sky-50' : 'text-slate-400 hover:bg-slate-100'}`}
+              >
+                <Cloud className="h-4 w-4" />
+              </button>
+            )}
             <button
               onClick={handleShareTrip}
-              className="print-hide flex items-center gap-1 text-sm text-slate-600 hover:text-sky-600"
+              className="hidden items-center gap-1 rounded px-2 py-1.5 text-sm text-slate-600 hover:bg-slate-100 hover:text-sky-600 sm:flex"
               title="Copy share link"
             >
               <Link2 className="h-4 w-4" />
-              Share
+              <span className="hidden lg:inline">Share</span>
             </button>
             <button
               onClick={() => setInviteOpen(true)}
-              className="print-hide flex items-center gap-1 text-sm text-slate-600 hover:text-sky-600"
+              className="hidden items-center gap-1 rounded px-2 py-1.5 text-sm text-slate-600 hover:bg-slate-100 hover:text-sky-600 sm:flex"
               title="Invite member"
             >
               <UserPlus className="h-4 w-4" />
-              Invite
+              <span className="hidden lg:inline">Invite</span>
             </button>
             <button
               onClick={() => window.print()}
-              className="print-hide flex items-center gap-1 text-sm text-slate-600 hover:text-sky-600"
+              className="hidden items-center gap-1 rounded px-2 py-1.5 text-sm text-slate-600 hover:bg-slate-100 hover:text-sky-600 sm:flex"
               title="Print / Save as PDF"
             >
               <Printer className="h-4 w-4" />
-              Print
+              <span className="hidden lg:inline">Print</span>
             </button>
             <button
               onClick={() => exportIcal(trip.title, days)}
-              className="print-hide flex items-center gap-1 text-sm text-slate-600 hover:text-sky-600"
+              className="hidden items-center gap-1 rounded px-2 py-1.5 text-sm text-slate-600 hover:bg-slate-100 hover:text-sky-600 sm:flex"
               title="Export iCal"
             >
               <Calendar className="h-4 w-4" />
-              iCal
+              <span className="hidden lg:inline">iCal</span>
             </button>
-            <button onClick={handleDeleteTrip} className="print-hide text-sm text-red-600 hover:underline">Delete trip</button>
+            <button
+              onClick={handleDeleteTrip}
+              className="hidden rounded px-2 py-1.5 text-sm text-red-600 hover:bg-red-50 sm:block"
+            >
+              Delete
+            </button>
+            <div className="mx-1 hidden h-4 w-px bg-slate-200 sm:block" />
+            <Link
+              to="/profile"
+              className="hidden max-w-[100px] truncate rounded px-2 py-1.5 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900 sm:block"
+              title="Profile"
+            >
+              {user?.displayName ?? user?.email}
+            </Link>
+            <button
+              onClick={() => signOut()}
+              className="hidden items-center rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 sm:flex"
+              title="Sign out"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </div>
@@ -389,7 +427,7 @@ export default function TripDetail() {
       </div>
 
       {/* Weather strip */}
-      {trip.destination && (
+      {trip.destination && weatherVisible && (
         <div className="border-b border-slate-200 bg-slate-50 px-4 py-2">
           <div className="mx-auto max-w-7xl">
             <WeatherWidget lat={trip.destination.lat} lng={trip.destination.lng} />
