@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
+import { X } from 'lucide-react'
 import Modal from '@/components/Modal'
 import type { Activity, ActivityCategory, Day } from '@/lib/types'
 import { updateActivity, removeActivity } from '@/lib/firestore/trips'
@@ -28,6 +29,8 @@ export default function ActivityEditModal({
   const [duration, setDuration] = useState('')
   const [costAmount, setCostAmount] = useState('')
   const [notes, setNotes] = useState('')
+  const [photos, setPhotos] = useState<string[]>([])
+  const [photoInput, setPhotoInput] = useState('')
 
   useEffect(() => {
     if (!activity) return
@@ -37,9 +40,19 @@ export default function ActivityEditModal({
     setDuration(activity.durationMinutes != null ? String(activity.durationMinutes) : '')
     setCostAmount(activity.cost?.amount != null ? String(activity.cost.amount) : '')
     setNotes(activity.notes ?? '')
+    setPhotos(activity.photos ?? (activity.poi?.photoUrl ? [activity.poi.photoUrl] : []))
+    setPhotoInput('')
   }, [activity])
 
   if (!activity) return null
+
+  const handleAddPhoto = () => {
+    const url = photoInput.trim()
+    if (!url) return
+    try { new URL(url) } catch { toast.error('Invalid URL'); return }
+    setPhotos((prev) => [...prev, url])
+    setPhotoInput('')
+  }
 
   const handleSave = async () => {
     try {
@@ -49,6 +62,7 @@ export default function ActivityEditModal({
         durationMinutes: duration ? Number(duration) : undefined,
         cost: costAmount ? { amount: Number(costAmount), currency } : undefined,
         notes: notes || undefined,
+        photos: photos.length > 0 ? photos : undefined,
       }
       if (activity.poi && category) {
         patch.poi = { ...activity.poi, category: category as ActivityCategory }
@@ -124,6 +138,45 @@ export default function ActivityEditModal({
         <Field label="Notes">
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className="input" />
         </Field>
+
+        {/* Photo URLs */}
+        <div>
+          <span className="text-sm font-medium text-slate-700">Photos</span>
+          {photos.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {photos.map((url, i) => (
+                <div key={i} className="group relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg border border-slate-200">
+                  <img src={url} alt="" className="h-full w-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setPhotos((prev) => prev.filter((_, j) => j !== i))}
+                    className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition group-hover:opacity-100"
+                    aria-label="Remove photo"
+                  >
+                    <X className="h-4 w-4 text-white" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="mt-2 flex gap-2">
+            <input
+              type="url"
+              value={photoInput}
+              onChange={(e) => setPhotoInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddPhoto() } }}
+              placeholder="Paste photo URL…"
+              className="input flex-1"
+            />
+            <button
+              type="button"
+              onClick={handleAddPhoto}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium hover:bg-slate-50"
+            >
+              Add
+            </button>
+          </div>
+        </div>
       </div>
     </Modal>
   )

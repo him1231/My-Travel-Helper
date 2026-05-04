@@ -75,6 +75,19 @@ export default function ActivityCard({
             )}
           </div>
           {a.notes && <p className="mt-1.5 whitespace-pre-wrap text-xs text-slate-600">{a.notes}</p>}
+          {/* Photo thumbnails */}
+          {a.photos && a.photos.length > 0 && (
+            <div className="mt-2 flex gap-1 overflow-x-auto">
+              {a.photos.map((url, i) => (
+                <img
+                  key={i}
+                  src={url}
+                  alt=""
+                  className="h-12 w-12 flex-shrink-0 rounded object-cover"
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
