@@ -1,15 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { nanoid } from 'nanoid'
-import { ChevronLeft, MapPin } from 'lucide-react'
+import { ChevronLeft, MapPin, StickyNote } from 'lucide-react'
 import Header from '@/components/Header'
 import DayTabs from '@/components/DayTabs'
 import ActivityCard from '@/components/ActivityCard'
 import ActivityEditModal from '@/components/ActivityEditModal'
 import PlacesAutocomplete from '@/components/PlacesAutocomplete'
 import TripMap from '@/components/TripMap'
-import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip } from '@/lib/firestore/trips'
+import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateDayNotes } from '@/lib/firestore/trips'
 import type { Trip, Day, Activity, POI } from '@/lib/types'
 import { todayISO, addDaysISO, formatDateISO } from '@/lib/utils'
 
@@ -23,6 +23,9 @@ export default function TripDetail() {
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [missing, setMissing] = useState(false)
+  const [dayNotesValue, setDayNotesValue] = useState('')
+  const [notesOpen, setNotesOpen] = useState(false)
+  const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (!tripId) return
@@ -53,6 +56,11 @@ export default function TripDetail() {
     () => selectedDay?.activities.find((a) => a.id === editingActivityId) ?? null,
     [selectedDay, editingActivityId],
   )
+
+  // Sync local notes state when selected day changes
+  useEffect(() => {
+    setDayNotesValue(selectedDay?.notes ?? '')
+  }, [selectedDayId, selectedDay?.notes])
 
   if (loading) return <div className="grid h-screen place-items-center text-slate-500">Loading…</div>
   if (missing || !trip || !tripId) {
@@ -122,6 +130,19 @@ export default function TripDetail() {
     } catch (e) {
       console.error(e); toast.error('Failed to add stop')
     }
+  }
+
+  const handleDayNotesChange = (value: string) => {
+    setDayNotesValue(value)
+    if (notesTimerRef.current) clearTimeout(notesTimerRef.current)
+    notesTimerRef.current = setTimeout(async () => {
+      if (!tripId || !selectedDayId) return
+      try {
+        await updateDayNotes(tripId, selectedDayId, value)
+      } catch (e) {
+        console.error(e)
+      }
+    }, 600)
   }
 
   const handleDeleteTrip = async () => {
@@ -202,6 +223,30 @@ export default function TripDetail() {
                   onSelect={() => { setSelectedActivityId(a.id); setEditingActivityId(a.id) }}
                 />
               ))}
+            </div>
+          )}
+
+          {selectedDay && (
+            <div className="mt-4">
+              <button
+                onClick={() => setNotesOpen((o) => !o)}
+                className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-900"
+              >
+                <StickyNote className="h-3.5 w-3.5" />
+                {notesOpen ? 'Hide day notes' : 'Day notes'}
+                {!notesOpen && dayNotesValue && (
+                  <span className="ml-1 rounded-full bg-sky-100 px-1.5 py-0.5 text-sky-700">&#10003;</span>
+                )}
+              </button>
+              {notesOpen && (
+                <textarea
+                  value={dayNotesValue}
+                  onChange={(e) => handleDayNotesChange(e.target.value)}
+                  rows={4}
+                  placeholder="Notes for this day…"
+                  className="input mt-2"
+                />
+              )}
             </div>
           )}
         </aside>

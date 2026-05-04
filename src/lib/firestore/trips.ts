@@ -99,6 +99,10 @@ export async function addDay(tripId: string, date: string) {
   await setDoc(doc(daysCol(tripId), date), { date, notes: '', activities: [] }, { merge: true })
 }
 
+export async function updateDayNotes(tripId: string, dayId: string, notes: string) {
+  await updateDoc(doc(daysCol(tripId), dayId), { notes })
+}
+
 export async function removeDay(tripId: string, dayId: string) {
   await deleteDoc(doc(daysCol(tripId), dayId))
 }
