@@ -40,6 +40,7 @@ export default function TripDetail() {
   const [categoryFilter, setCategoryFilter] = useState<string>('')
   const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list')
   const [nearbyOpen, setNearbyOpen] = useState(false)
+  const [mobileTab, setMobileTab] = useState<'list' | 'map'>('list')
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteBusy, setInviteBusy] = useState(false)
@@ -387,7 +388,7 @@ export default function TripDetail() {
       </div>
 
       <div className="grid flex-1 grid-cols-1 overflow-hidden md:grid-cols-[minmax(360px,40%)_1fr]">
-        <aside className="print-area overflow-y-auto border-r border-slate-200 bg-slate-50 p-4">
+        <aside className={`print-area overflow-y-auto border-r border-slate-200 bg-slate-50 p-4 ${mobileTab === 'list' ? 'block' : 'hidden md:block'}`}>
           {!selectedDay ? (
             <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
               <p>No days yet — click “Add day” to start.</p>
@@ -621,7 +622,7 @@ export default function TripDetail() {
           })()}
         </aside>
 
-        <section className="relative">
+        <section className={`relative ${mobileTab === 'map' ? 'block' : 'hidden md:block'}`}>
           <TripMap
             activities={selectedDay?.activities ?? []}
             selectedId={selectedActivityId ?? undefined}
@@ -630,6 +631,24 @@ export default function TripDetail() {
           />
         </section>
       </div>
+
+      {/* Mobile bottom tab bar */}
+      <nav className="print-hide fixed bottom-0 left-0 right-0 z-30 flex border-t border-slate-200 bg-white md:hidden">
+        <button
+          onClick={() => setMobileTab('list')}
+          className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-xs ${mobileTab === 'list' ? 'text-sky-600' : 'text-slate-500'}`}
+        >
+          <LayoutList className="h-5 w-5" />
+          List
+        </button>
+        <button
+          onClick={() => setMobileTab('map')}
+          className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-xs ${mobileTab === 'map' ? 'text-sky-600' : 'text-slate-500'}`}
+        >
+          <MapPin className="h-5 w-5" />
+          Map
+        </button>
+      </nav>
 
       {selectedDay && (
         <ActivityEditModal

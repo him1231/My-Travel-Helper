@@ -13,7 +13,7 @@ export default function DayTabs({
   onRemoveDay?: (id: string) => void
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1">
       {days.map((d, i) => (
         <div key={d.id} className="group relative">
           <button
