@@ -16,7 +16,7 @@ import PlacesAutocomplete from '@/components/PlacesAutocomplete'
 import TripMap from '@/components/TripMap'
 import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, reorderActivities } from '@/lib/firestore/trips'
 import type { Trip, Day, Activity, POI } from '@/lib/types'
-import { todayISO, addDaysISO, formatDateISO } from '@/lib/utils'
+import { todayISO, addDaysISO, formatDateISO, formatMoney } from '@/lib/utils'
 
 export default function TripDetail() {
   const { tripId } = useParams<{ tripId: string }>()
@@ -316,6 +316,53 @@ export default function TripDetail() {
               )}
             </div>
           )}
+        {/* Budget summary */}
+          {days.length > 0 && (() => {
+            const currency = trip.currency || 'USD'
+            const allActivities = days.flatMap((d) => d.activities)
+            const tripTotal = allActivities.reduce((sum, a) => sum + (a.cost?.amount ?? 0), 0)
+            const dayTotal = (selectedDay?.activities ?? []).reduce((sum, a) => sum + (a.cost?.amount ?? 0), 0)
+            const budgetLimit = trip.budgetLimit?.amount
+            const hasAny = tripTotal > 0 || budgetLimit
+            if (!hasAny) return null
+            const overBudget = budgetLimit && tripTotal > budgetLimit
+            const pct = budgetLimit ? Math.min(100, (tripTotal / budgetLimit) * 100) : 0
+            return (
+              <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                <div className="mb-2 font-semibold text-slate-700">Budget summary</div>
+                {(selectedDay?.activities ?? []).filter((a) => (a.cost?.amount ?? 0) > 0).map((a) => (
+                  <div key={a.id} className="flex justify-between py-0.5 text-slate-600">
+                    <span className="truncate pr-2">{a.title}</span>
+                    <span className="flex-shrink-0 font-medium">{formatMoney(a.cost!.amount, a.cost!.currency || currency)}</span>
+                  </div>
+                ))}
+                {selectedDay && dayTotal > 0 && (
+                  <div className="mt-1 flex justify-between border-t border-slate-100 pt-1 font-semibold text-slate-700">
+                    <span>Day total</span>
+                    <span>{formatMoney(dayTotal, currency)}</span>
+                  </div>
+                )}
+                <div className="mt-1 flex justify-between border-t border-slate-200 pt-1 font-bold text-slate-900">
+                  <span>Trip total</span>
+                  <span className={overBudget ? 'text-red-600' : ''}>{formatMoney(tripTotal, currency)}</span>
+                </div>
+                {budgetLimit != null && (
+                  <>
+                    <div className="mt-1 flex justify-between text-slate-500">
+                      <span>Budget limit</span>
+                      <span>{formatMoney(budgetLimit, currency)}</span>
+                    </div>
+                    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        className={`h-full rounded-full transition-all ${overBudget ? 'bg-red-500' : 'bg-emerald-500'}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            )
+          })()}
         </aside>
 
         <section className="relative">

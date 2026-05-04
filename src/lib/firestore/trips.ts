@@ -15,6 +15,7 @@ export type NewTripInput = {
   startDate?: string
   endDate?: string
   currency: string
+  budgetLimit?: { amount: number; currency: string }
 }
 
 export async function createTrip(uid: string, input: NewTripInput): Promise<string> {
@@ -29,6 +30,7 @@ export async function createTrip(uid: string, input: NewTripInput): Promise<stri
     startDate: input.startDate ?? null,
     endDate: input.endDate ?? null,
     currency: input.currency,
+    budgetLimit: input.budgetLimit ?? null,
     checklist: [],
   })
   const ref = await addDoc(tripsCol, {

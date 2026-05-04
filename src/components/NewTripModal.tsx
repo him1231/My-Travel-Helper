@@ -21,10 +21,11 @@ export default function NewTripModal({
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [currency, setCurrency] = useState('USD')
+  const [budgetLimit, setBudgetLimit] = useState('')
   const [busy, setBusy] = useState(false)
 
   const reset = () => {
-    setTitle(''); setDestination(null); setStartDate(''); setEndDate(''); setCurrency('USD')
+    setTitle(''); setDestination(null); setStartDate(''); setEndDate(''); setCurrency('USD'); setBudgetLimit('')
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -42,6 +43,7 @@ export default function NewTripModal({
         startDate: startDate || undefined,
         endDate: endDate || undefined,
         currency,
+        budgetLimit: budgetLimit ? { amount: parseFloat(budgetLimit), currency } : undefined,
       })
       toast.success('Trip created')
       reset()
@@ -103,6 +105,18 @@ export default function NewTripModal({
           <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="input">
             {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
+        </Field>
+
+        <Field label="Budget limit (optional)">
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={budgetLimit}
+            onChange={(e) => setBudgetLimit(e.target.value)}
+            placeholder={`e.g. 2000 (${currency})`}
+            className="input"
+          />
         </Field>
       </form>
     </Modal>

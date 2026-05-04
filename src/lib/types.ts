@@ -52,6 +52,7 @@ export type Trip = {
   startDate?: string
   endDate?: string
   currency: string
+  budgetLimit?: Money
 
   checklist: ChecklistItem[]
 
