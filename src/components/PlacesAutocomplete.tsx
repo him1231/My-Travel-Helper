@@ -11,61 +11,67 @@ type Props = {
 export default function PlacesAutocomplete({ onSelect, placeholder, className }: Props) {
   const places = useMapsLibrary('places')
   const [input, setInput] = useState('')
-  const [predictions, setPredictions] = useState<google.maps.places.AutocompletePrediction[]>([])
+  const [suggestions, setSuggestions] = useState<google.maps.places.AutocompleteSuggestion[]>([])
   const [open, setOpen] = useState(false)
   const sessionToken = useRef<google.maps.places.AutocompleteSessionToken | null>(null)
-  const autocompleteService = useRef<google.maps.places.AutocompleteService | null>(null)
-  const placesService = useRef<google.maps.places.PlacesService | null>(null)
 
   useEffect(() => {
     if (!places) return
-    autocompleteService.current = new places.AutocompleteService()
     sessionToken.current = new places.AutocompleteSessionToken()
-    const div = document.createElement('div')
-    placesService.current = new places.PlacesService(div)
   }, [places])
 
   useEffect(() => {
-    if (!input.trim() || !autocompleteService.current) {
-      setPredictions([])
+    if (!places || !input.trim()) {
+      setSuggestions([])
       return
     }
-    const handle = setTimeout(() => {
-      autocompleteService.current!.getPlacePredictions(
-        { input, sessionToken: sessionToken.current ?? undefined },
-        (preds) => setPredictions(preds ?? []),
-      )
+    const handle = setTimeout(async () => {
+      try {
+        const { suggestions: results } = await google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+          input,
+          sessionToken: sessionToken.current ?? undefined,
+        })
+        setSuggestions(results ?? [])
+      } catch {
+        setSuggestions([])
+      }
     }, 200)
     return () => clearTimeout(handle)
-  }, [input])
+  }, [input, places])
 
-  const handlePick = (pred: google.maps.places.AutocompletePrediction) => {
-    if (!placesService.current || !places) return
-    placesService.current.getDetails(
-      {
-        placeId: pred.place_id,
-        fields: ['place_id', 'name', 'geometry', 'formatted_address', 'rating', 'photos', 'url'],
-        sessionToken: sessionToken.current ?? undefined,
-      },
-      (place, status) => {
-        if (status !== google.maps.places.PlacesServiceStatus.OK || !place || !place.geometry?.location) return
-        const poi: POI = {
-          placeId: place.place_id ?? pred.place_id,
-          name: place.name ?? pred.structured_formatting.main_text,
-          lat: place.geometry.location.lat(),
-          lng: place.geometry.location.lng(),
-          address: place.formatted_address,
-          rating: place.rating,
-          url: place.url,
-          photoUrl: place.photos?.[0]?.getUrl({ maxWidth: 400 }),
-        }
-        sessionToken.current = new places.AutocompleteSessionToken()
-        setInput('')
-        setPredictions([])
-        setOpen(false)
-        onSelect(poi)
-      },
-    )
+  const handlePick = async (suggestion: google.maps.places.AutocompleteSuggestion) => {
+    if (!places) return
+    try {
+      const placePrediction = suggestion.placePrediction
+      if (!placePrediction) return
+      const place = placePrediction.toPlace()
+      await place.fetchFields({
+        fields: ['id', 'displayName', 'location', 'formattedAddress', 'rating', 'photos', 'websiteURI'],
+      })
+
+      const location = place.location
+      if (!location) return
+
+      const poi: POI = {
+        placeId: place.id,
+        name: place.displayName ?? placePrediction.mainText?.text ?? '',
+        lat: location.lat(),
+        lng: location.lng(),
+        address: place.formattedAddress ?? undefined,
+        rating: place.rating ?? undefined,
+        url: place.websiteURI ?? undefined,
+        photoUrl: place.photos?.[0]?.getURI({ maxWidth: 400 }),
+      }
+
+      // Reset session token after a place is selected
+      sessionToken.current = new places.AutocompleteSessionToken()
+      setInput('')
+      setSuggestions([])
+      setOpen(false)
+      onSelect(poi)
+    } catch (e) {
+      console.error('Place details fetch failed', e)
+    }
   }
 
   return (
@@ -79,18 +85,21 @@ export default function PlacesAutocomplete({ onSelect, placeholder, className }:
         disabled={!places}
         className="input"
       />
-      {open && predictions.length > 0 && (
+      {open && suggestions.length > 0 && (
         <ul className="absolute z-30 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
-          {predictions.map((p) => (
-            <li
-              key={p.place_id}
-              onMouseDown={(e) => { e.preventDefault(); handlePick(p) }}
-              className="cursor-pointer border-b border-slate-100 px-3 py-2 text-sm last:border-0 hover:bg-slate-50"
-            >
-              <div className="font-medium">{p.structured_formatting.main_text}</div>
-              <div className="truncate text-xs text-slate-500">{p.structured_formatting.secondary_text}</div>
-            </li>
-          ))}
+          {suggestions.map((s, i) => {
+            const pred = s.placePrediction
+            return (
+              <li
+                key={pred?.placeId ?? i}
+                onMouseDown={(e) => { e.preventDefault(); handlePick(s) }}
+                className="cursor-pointer border-b border-slate-100 px-3 py-2 text-sm last:border-0 hover:bg-slate-50"
+              >
+                <div className="font-medium">{pred?.mainText?.text ?? ''}</div>
+                <div className="truncate text-xs text-slate-500">{pred?.secondaryText?.text ?? ''}</div>
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>
