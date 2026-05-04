@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { nanoid } from 'nanoid'
-import { ChevronLeft, LayoutList, Link2, MapPin, StickyNote, Clock, UserPlus } from 'lucide-react'
+import { ChevronLeft, LayoutList, Link2, MapPin, Printer, StickyNote, Clock, UserPlus } from 'lucide-react'
 import {
   DndContext, PointerSensor, useSensor, useSensors,
   type DragEndEvent, closestCenter,
@@ -314,7 +314,7 @@ export default function TripDetail() {
           <div className="flex items-center gap-3">
             <button
               onClick={handleShareTrip}
-              className="flex items-center gap-1 text-sm text-slate-600 hover:text-sky-600"
+              className="print-hide flex items-center gap-1 text-sm text-slate-600 hover:text-sky-600"
               title="Copy share link"
             >
               <Link2 className="h-4 w-4" />
@@ -322,13 +322,21 @@ export default function TripDetail() {
             </button>
             <button
               onClick={() => setInviteOpen(true)}
-              className="flex items-center gap-1 text-sm text-slate-600 hover:text-sky-600"
+              className="print-hide flex items-center gap-1 text-sm text-slate-600 hover:text-sky-600"
               title="Invite member"
             >
               <UserPlus className="h-4 w-4" />
               Invite
             </button>
-            <button onClick={handleDeleteTrip} className="text-sm text-red-600 hover:underline">Delete trip</button>
+            <button
+              onClick={() => window.print()}
+              className="print-hide flex items-center gap-1 text-sm text-slate-600 hover:text-sky-600"
+              title="Print / Save as PDF"
+            >
+              <Printer className="h-4 w-4" />
+              Print
+            </button>
+            <button onClick={handleDeleteTrip} className="print-hide text-sm text-red-600 hover:underline">Delete trip</button>
           </div>
         </div>
       </div>
@@ -365,7 +373,7 @@ export default function TripDetail() {
       </div>
 
       <div className="grid flex-1 grid-cols-1 overflow-hidden md:grid-cols-[minmax(360px,40%)_1fr]">
-        <aside className="overflow-y-auto border-r border-slate-200 bg-slate-50 p-4">
+        <aside className="print-area overflow-y-auto border-r border-slate-200 bg-slate-50 p-4">
           {!selectedDay ? (
             <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
               <p>No days yet — click “Add day” to start.</p>
