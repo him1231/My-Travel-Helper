@@ -171,6 +171,39 @@ export default function TripDetail() {
     }
   }
 
+  const handleAddNote = async () => {
+    if (!tripId || !selectedDay) return
+    const activity: Activity = {
+      id: nanoid(8),
+      order: selectedDay.activities.length,
+      type: 'note',
+      title: 'Note',
+      notes: '',
+    }
+    try {
+      await addActivity(tripId, selectedDay, activity)
+      setEditingActivityId(activity.id)
+    } catch (e) {
+      console.error(e); toast.error('Failed to add note')
+    }
+  }
+
+  const handleAddTransport = async () => {
+    if (!tripId || !selectedDay) return
+    const activity: Activity = {
+      id: nanoid(8),
+      order: selectedDay.activities.length,
+      type: 'transport',
+      title: 'Transport',
+    }
+    try {
+      await addActivity(tripId, selectedDay, activity)
+      setEditingActivityId(activity.id)
+    } catch (e) {
+      console.error(e); toast.error('Failed to add transport')
+    }
+  }
+
   const handleDayNotesChange = (value: string) => {
     setDayNotesValue(value)
     if (notesTimerRef.current) clearTimeout(notesTimerRef.current)
@@ -307,8 +340,24 @@ export default function TripDetail() {
             onAddDay={handleAddDay}
             onRemoveDay={handleRemoveDay}
           />
-          <div className="ml-auto w-full sm:w-72">
-            <PlacesAutocomplete onSelect={handleAddPOI} placeholder="Search to add a stop…" />
+          <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
+            <div className="flex-1 sm:w-72">
+              <PlacesAutocomplete onSelect={handleAddPOI} placeholder="Search to add a stop…" />
+            </div>
+            <button
+              onClick={handleAddNote}
+              className="flex-shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              title="Add note"
+            >
+              + Note
+            </button>
+            <button
+              onClick={handleAddTransport}
+              className="flex-shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              title="Add transport"
+            >
+              + Transport
+            </button>
           </div>
         </div>
       </div>

@@ -1,9 +1,15 @@
-import { Clock, GripVertical, MapPin, Wallet } from 'lucide-react'
+import { Clock, GripVertical, MapPin, StickyNote, Truck, Wallet } from 'lucide-react'
 import clsx from 'clsx'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { Activity } from '@/lib/types'
 import { formatMoney } from '@/lib/utils'
+
+const TYPE_STYLES: Record<string, { badge: string; border: string }> = {
+  poi: { badge: 'bg-rose-500', border: '' },
+  note: { badge: 'bg-amber-400', border: 'border-amber-100 bg-amber-50' },
+  transport: { badge: 'bg-sky-500', border: 'border-sky-100 bg-sky-50' },
+}
 
 export default function ActivityCard({
   activity, index, selected, onSelect,
@@ -14,9 +20,10 @@ export default function ActivityCard({
   onSelect?: () => void
 }) {
   const a = activity
+  const style_info = TYPE_STYLES[a.type] ?? TYPE_STYLES.poi
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: a.id })
 
-  const style = {
+  const dndStyle = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.4 : 1,
@@ -25,11 +32,11 @@ export default function ActivityCard({
   return (
     <div
       ref={setNodeRef}
-      style={style}
+      style={dndStyle}
       onClick={onSelect}
       className={clsx(
-        'cursor-pointer rounded-lg border bg-white p-3 transition',
-        selected ? 'border-sky-500 ring-2 ring-sky-200' : 'border-slate-200 hover:border-slate-300',
+        'cursor-pointer rounded-lg border p-3 transition',
+        selected ? 'border-sky-500 ring-2 ring-sky-200' : `border-slate-200 hover:border-slate-300 ${style_info.border}`,
       )}
     >
       <div className="flex items-start gap-3">
@@ -42,8 +49,8 @@ export default function ActivityCard({
         >
           <GripVertical className="h-4 w-4" />
         </button>
-        <div className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-full bg-rose-500 text-xs font-bold text-white">
-          {index + 1}
+        <div className={`grid h-7 w-7 flex-shrink-0 place-items-center rounded-full text-xs font-bold text-white ${style_info.badge}`}>
+          {a.type === 'note' ? <StickyNote className="h-3.5 w-3.5" /> : a.type === 'transport' ? <Truck className="h-3.5 w-3.5" /> : index + 1}
         </div>
         <div className="min-w-0 flex-1">
           <div className="font-medium text-slate-900">{a.title}</div>
