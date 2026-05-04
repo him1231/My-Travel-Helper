@@ -33,6 +33,7 @@ export default function TripDetail() {
   const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Optimistic local copy of activities for smooth DnD
   const [localActivities, setLocalActivities] = useState<Activity[]>([])
+  const [categoryFilter, setCategoryFilter] = useState<string>('')
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -276,10 +277,39 @@ export default function TripDetail() {
               <p className="mt-1 text-xs">Use the search box above to add a place.</p>
             </div>
           ) : (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <>
+              {/* Category filter pills */}
+              {localActivities.some((a) => a.poi?.category) && (
+                <div className="mb-3 flex flex-wrap gap-1.5">
+                  {[
+                    { value: '', label: 'All', emoji: '' },
+                    { value: 'sight', label: 'Sights', emoji: '🏛️' },
+                    { value: 'food', label: 'Food', emoji: '🍽️' },
+                    { value: 'hotel', label: 'Hotel', emoji: '🏨' },
+                    { value: 'transport', label: 'Transport', emoji: '🚌' },
+                    { value: 'other', label: 'Other', emoji: '📌' },
+                  ].map((c) => (
+                    <button
+                      key={c.value}
+                      onClick={() => setCategoryFilter(c.value)}
+                      className={`rounded-full border px-2.5 py-0.5 text-xs transition ${
+                        categoryFilter === c.value
+                          ? 'border-sky-500 bg-sky-50 text-sky-700'
+                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {c.emoji ? `${c.emoji} ` : ''}{c.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={localActivities.map((a) => a.id)} strategy={verticalListSortingStrategy}>
                 <div className="space-y-2">
-                  {localActivities.map((a, i) => (
+                  {(categoryFilter
+                    ? localActivities.filter((a) => a.poi?.category === categoryFilter)
+                    : localActivities
+                  ).map((a, i) => (
                     <ActivityCard
                       key={a.id}
                       activity={a}
@@ -290,7 +320,8 @@ export default function TripDetail() {
                   ))}
                 </div>
               </SortableContext>
-            </DndContext>
+              </DndContext>
+            </>
           )}
 
           {selectedDay && (
