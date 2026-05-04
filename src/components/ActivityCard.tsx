@@ -1,5 +1,7 @@
-import { Clock, MapPin, Wallet } from 'lucide-react'
+import { Clock, GripVertical, MapPin, Wallet } from 'lucide-react'
 import clsx from 'clsx'
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import type { Activity } from '@/lib/types'
 import { formatMoney } from '@/lib/utils'
 
@@ -12,8 +14,18 @@ export default function ActivityCard({
   onSelect?: () => void
 }) {
   const a = activity
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: a.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
+
   return (
     <div
+      ref={setNodeRef}
+      style={style}
       onClick={onSelect}
       className={clsx(
         'cursor-pointer rounded-lg border bg-white p-3 transition',
@@ -21,6 +33,15 @@ export default function ActivityCard({
       )}
     >
       <div className="flex items-start gap-3">
+        <button
+          {...attributes}
+          {...listeners}
+          onClick={(e) => e.stopPropagation()}
+          className="mt-0.5 flex-shrink-0 cursor-grab touch-none text-slate-300 hover:text-slate-500 active:cursor-grabbing"
+          aria-label="Drag to reorder"
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
         <div className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-full bg-rose-500 text-xs font-bold text-white">
           {index + 1}
         </div>

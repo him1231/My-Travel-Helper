@@ -134,3 +134,14 @@ export async function removeActivity(tripId: string, day: Day, activityId: strin
   const activities = day.activities.filter((a) => a.id !== activityId)
   await setDayActivities(tripId, day.id, activities)
 }
+
+export async function reorderActivities(tripId: string, day: Day, orderedIds: string[]) {
+  const map = new Map(day.activities.map((a) => [a.id, a]))
+  const activities = orderedIds
+    .map((id, i) => {
+      const a = map.get(id)
+      return a ? { ...a, order: i } : null
+    })
+    .filter((a): a is Activity => a !== null)
+  await setDayActivities(tripId, day.id, activities)
+}

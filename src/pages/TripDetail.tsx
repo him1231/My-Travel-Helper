@@ -3,13 +3,18 @@ import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { nanoid } from 'nanoid'
 import { ChevronLeft, MapPin, StickyNote } from 'lucide-react'
+import {
+  DndContext, PointerSensor, useSensor, useSensors,
+  type DragEndEvent, closestCenter,
+} from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import Header from '@/components/Header'
 import DayTabs from '@/components/DayTabs'
 import ActivityCard from '@/components/ActivityCard'
 import ActivityEditModal from '@/components/ActivityEditModal'
 import PlacesAutocomplete from '@/components/PlacesAutocomplete'
 import TripMap from '@/components/TripMap'
-import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateDayNotes } from '@/lib/firestore/trips'
+import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateDayNotes, reorderActivities } from '@/lib/firestore/trips'
 import type { Trip, Day, Activity, POI } from '@/lib/types'
 import { todayISO, addDaysISO, formatDateISO } from '@/lib/utils'
 
@@ -26,6 +31,12 @@ export default function TripDetail() {
   const [dayNotesValue, setDayNotesValue] = useState('')
   const [notesOpen, setNotesOpen] = useState(false)
   const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Optimistic local copy of activities for smooth DnD
+  const [localActivities, setLocalActivities] = useState<Activity[]>([])
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  )
 
   useEffect(() => {
     if (!tripId) return
@@ -53,14 +64,36 @@ export default function TripDetail() {
     [days, selectedDayId],
   )
   const editingActivity = useMemo(
-    () => selectedDay?.activities.find((a) => a.id === editingActivityId) ?? null,
-    [selectedDay, editingActivityId],
+    () => localActivities.find((a) => a.id === editingActivityId) ?? null,
+    [localActivities, editingActivityId],
   )
 
   // Sync local notes state when selected day changes
   useEffect(() => {
     setDayNotesValue(selectedDay?.notes ?? '')
   }, [selectedDayId, selectedDay?.notes])
+
+  // Keep local activities in sync with Firestore (but don't override during active drag)
+  useEffect(() => {
+    setLocalActivities(selectedDay?.activities ?? [])
+  }, [selectedDay?.activities])
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id || !selectedDay || !tripId) return
+    const oldIds = localActivities.map((a) => a.id)
+    const oldIdx = oldIds.indexOf(active.id as string)
+    const newIdx = oldIds.indexOf(over.id as string)
+    const reordered = arrayMove(localActivities, oldIdx, newIdx)
+    setLocalActivities(reordered) // optimistic update
+    try {
+      await reorderActivities(tripId, selectedDay, reordered.map((a) => a.id))
+    } catch (e) {
+      console.error(e)
+      toast.error('Failed to reorder')
+      setLocalActivities(selectedDay.activities) // rollback
+    }
+  }
 
   if (loading) return <div className="grid h-screen place-items-center text-slate-500">Loading…</div>
   if (missing || !trip || !tripId) {
@@ -213,17 +246,21 @@ export default function TripDetail() {
               <p className="mt-1 text-xs">Use the search box above to add a place.</p>
             </div>
           ) : (
-            <div className="space-y-2">
-              {selectedDay.activities.map((a, i) => (
-                <ActivityCard
-                  key={a.id}
-                  activity={a}
-                  index={i}
-                  selected={selectedActivityId === a.id}
-                  onSelect={() => { setSelectedActivityId(a.id); setEditingActivityId(a.id) }}
-                />
-              ))}
-            </div>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={localActivities.map((a) => a.id)} strategy={verticalListSortingStrategy}>
+                <div className="space-y-2">
+                  {localActivities.map((a, i) => (
+                    <ActivityCard
+                      key={a.id}
+                      activity={a}
+                      index={i}
+                      selected={selectedActivityId === a.id}
+                      onSelect={() => { setSelectedActivityId(a.id); setEditingActivityId(a.id) }}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
           )}
 
           {selectedDay && (
