@@ -27,9 +27,10 @@ type Props = {
     toKind: 'day' | 'list', toId: string,
   ) => Promise<void>
   onSelectActivity?: (activityId: string, kind: 'day' | 'list', containerId: string) => void
+  onSelectDay?: (dayId: string) => void
 }
 
-export default function OverviewView({ days, scratchLists, onMoveActivity, onSelectActivity }: Props) {
+export default function OverviewView({ days, scratchLists, onMoveActivity, onSelectActivity, onSelectDay }: Props) {
   const [view, setView] = useState<'kanban' | 'map'>('kanban')
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
@@ -82,7 +83,7 @@ export default function OverviewView({ days, scratchLists, onMoveActivity, onSel
           <div className="flex flex-1 overflow-x-auto">
             <div className="mx-auto flex min-w-min gap-3 p-4">
               {days.map((day, dayIdx) => (
-                <DayColumn key={day.id} day={day} dayIdx={dayIdx} onSelectActivity={onSelectActivity} />
+                <DayColumn key={day.id} day={day} dayIdx={dayIdx} onSelectActivity={onSelectActivity} onSelectDay={onSelectDay} />
               ))}
               {scratchLists.map((list) => (
                 <ListColumn key={list.id} list={list} onSelectActivity={onSelectActivity} />
@@ -104,11 +105,12 @@ export default function OverviewView({ days, scratchLists, onMoveActivity, onSel
 }
 
 function DayColumn({
-  day, dayIdx, onSelectActivity,
+  day, dayIdx, onSelectActivity, onSelectDay,
 }: {
   day: Day
   dayIdx: number
   onSelectActivity?: (activityId: string, kind: 'day' | 'list', containerId: string) => void
+  onSelectDay?: (dayId: string) => void
 }) {
   const color = DAY_COLORS[dayIdx % DAY_COLORS.length]
   const { setNodeRef, isOver } = useDroppable({ id: `day::${day.id}` })
@@ -118,11 +120,17 @@ function DayColumn({
       className={`flex w-56 flex-shrink-0 flex-col rounded-xl border transition-colors ${isOver ? 'border-sky-400 bg-sky-50' : 'border-slate-200 bg-white'}`}
     >
       <div
-        className="rounded-t-xl border-b border-slate-100 px-3 py-2.5"
+        className={`rounded-t-xl border-b border-slate-100 px-3 py-2.5 ${onSelectDay ? 'cursor-pointer hover:bg-slate-50' : ''}`}
         style={{ borderTop: `3px solid ${color}` }}
+        onClick={onSelectDay ? () => onSelectDay(day.id) : undefined}
+        title={onSelectDay ? 'Open day detail' : undefined}
       >
+        {day.title && <div className="truncate text-[11px] font-bold text-slate-700">{day.title}</div>}
         <div className="text-xs font-semibold text-slate-800">{formatDateISO(day.date)}</div>
         <div className="text-[10px] text-slate-400">{day.activities.length} stop{day.activities.length !== 1 ? 's' : ''}</div>
+        {day.notes && (
+          <div className="mt-0.5 line-clamp-2 text-[10px] italic text-slate-400">{day.notes}</div>
+        )}
       </div>
       <div className="flex-1 space-y-1.5 overflow-y-auto p-2">
         {day.activities.map((activity) => (

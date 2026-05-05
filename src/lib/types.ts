@@ -40,6 +40,7 @@ export type Activity = {
 export type Day = {
   id: string // ISO date "YYYY-MM-DD"
   date: string
+  title?: string
   notes?: string
   activities: Activity[]
 }

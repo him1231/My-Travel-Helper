@@ -106,6 +106,10 @@ export async function updateDayNotes(tripId: string, dayId: string, notes: strin
   await updateDoc(doc(daysCol(tripId), dayId), { notes })
 }
 
+export async function updateDayTitle(tripId: string, dayId: string, title: string) {
+  await updateDoc(doc(daysCol(tripId), dayId), { title })
+}
+
 export async function removeDay(tripId: string, dayId: string) {
   await deleteDoc(doc(daysCol(tripId), dayId))
 }

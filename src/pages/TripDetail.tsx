@@ -3,6 +3,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { nanoid } from 'nanoid'
 import { ChevronDown, ChevronLeft, Calendar, Cloud, Compass, LayoutGrid, LayoutList, Link2, LogOut, MapPin, Plus, Printer, StickyNote, Clock, UserPlus, X } from 'lucide-react'
+import type { DayTabConfig } from '@/components/DayTabs'
+import { DEFAULT_DAY_TAB_CONFIG } from '@/components/DayTabs'
 import {
   DndContext, PointerSensor, useSensor, useSensors,
   type DragEndEvent, closestCenter,
@@ -20,7 +22,7 @@ import TripMap from '@/components/TripMap'
 import TimelineView from '@/components/TimelineView'
 import NearbyDrawer from '@/components/NearbyDrawer'
 import WeatherWidget from '@/components/WeatherWidget'
-import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, reorderActivities, updateActivity, removeActivity, moveActivityBetweenDays, subscribeScratchLists, addScratchList, renameScratchList, removeScratchList, addActivityToList, updateActivityInList, removeActivityFromList, moveBetweenDayAndList, moveFromListToDay, moveBetweenLists } from '@/lib/firestore/trips'
+import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, updateDayTitle, reorderActivities, updateActivity, removeActivity, moveActivityBetweenDays, subscribeScratchLists, addScratchList, renameScratchList, removeScratchList, addActivityToList, updateActivityInList, removeActivityFromList, moveBetweenDayAndList, moveFromListToDay, moveBetweenLists } from '@/lib/firestore/trips'
 import type { Trip, Day, Activity, POI, ScratchList } from '@/lib/types'
 import { todayISO, addDaysISO, formatDateISO, formatMoney, exportIcal } from '@/lib/utils'
 
@@ -85,6 +87,14 @@ export default function TripDetail() {
   const [activeTabKind, setActiveTabKind] = useState<'day' | 'list'>('day')
   const [selectedListId, setSelectedListId] = useState<string | null>(null)
   const [listNameValue, setListNameValue] = useState('')
+  const [dayTitleValue, setDayTitleValue] = useState('')
+  const dayTitleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [dayTabConfig, setDayTabConfig] = useState<DayTabConfig>(() => {
+    try {
+      const stored = localStorage.getItem('dayTabConfig')
+      return stored ? { ...DEFAULT_DAY_TAB_CONFIG, ...JSON.parse(stored) } : DEFAULT_DAY_TAB_CONFIG
+    } catch { return DEFAULT_DAY_TAB_CONFIG }
+  })
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -148,10 +158,11 @@ export default function TripDetail() {
     [localActivities, selectedActivityId],
   )
 
-  // Sync local notes state when selected day changes
+  // Sync local notes/title state when selected day changes
   useEffect(() => {
     setDayNotesValue(selectedDay?.notes ?? '')
-  }, [selectedDayId, selectedDay?.notes])
+    setDayTitleValue(selectedDay?.title ?? '')
+  }, [selectedDayId, selectedDay?.notes, selectedDay?.title])
 
   // Sync list name input when selected list changes
   useEffect(() => {
@@ -347,6 +358,26 @@ export default function TripDetail() {
         console.error(e)
       }
     }, 600)
+  }
+
+  const handleDayTitleChange = (value: string) => {
+    setDayTitleValue(value)
+    if (dayTitleTimerRef.current) clearTimeout(dayTitleTimerRef.current)
+    dayTitleTimerRef.current = setTimeout(async () => {
+      if (!tripId || !selectedDayId) return
+      try { await updateDayTitle(tripId, selectedDayId, value) } catch (e) { console.error(e) }
+    }, 600)
+  }
+
+  const handleSelectDayFromOverview = (dayId: string) => {
+    setSelectedDayId(dayId)
+    setActiveTabKind('day')
+    setShowOverview(false)
+  }
+
+  const handleDayTabConfigChange = (cfg: DayTabConfig) => {
+    setDayTabConfig(cfg)
+    try { localStorage.setItem('dayTabConfig', JSON.stringify(cfg)) } catch { /* ignore */ }
   }
 
   const handleAddScratchList = async () => {
@@ -568,6 +599,7 @@ export default function TripDetail() {
         </div>
       </div>
 
+      {!showOverview && (
       <div className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-4 py-3">
           <DayTabs
@@ -576,6 +608,8 @@ export default function TripDetail() {
             onSelect={(id) => { setSelectedDayId(id); setActiveTabKind('day') }}
             onAddDay={handleAddDay}
             onRemoveDay={handleRemoveDay}
+            config={dayTabConfig}
+            onConfigChange={handleDayTabConfigChange}
           />
           {/* Scratch list tabs */}
           <div className="flex flex-nowrap items-center gap-1.5">
@@ -623,6 +657,7 @@ export default function TripDetail() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Weather strip */}
       {trip.destination && weatherVisible && (
@@ -644,6 +679,7 @@ export default function TripDetail() {
               else { setSelectedListId(containerId); setActiveTabKind('list') }
               setEditingActivityId(activityId)
             }}
+            onSelectDay={handleSelectDayFromOverview}
           />
         </div>
       ) : null}
@@ -686,136 +722,150 @@ export default function TripDetail() {
             <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
               <p>No days yet — click "Add day" to start.</p>
             </div>
-          ) : selectedDay.activities.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
-              <p>No stops yet.</p>
-              <p className="mt-1 text-xs">Use the search box above to add a place.</p>
-            </div>
           ) : (
             <>
-              <SectionHeader
-                title="Stops"
-                open={activitiesOpen}
-                onToggle={() => setActivitiesOpen((o) => !o)}
-                badge={localActivities.length}
-              />
-              {activitiesOpen && <>{/* View mode toggle */}
-              <div className="mb-3 flex items-center justify-between">
-                <span className="text-xs font-medium text-slate-500">{localActivities.length} {localActivities.length === 1 ? 'stop' : 'stops'}</span>
-                <div className="flex items-center gap-2">
-                  {selectedPOI && (
-                    <button
-                      onClick={() => setNearbyOpen((o) => !o)}
-                      className="print-hide rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
-                      title="Discover nearby places"
-                    >
-                      {nearbyOpen ? 'Hide nearby' : '🔍 Nearby'}
-                    </button>
-                  )}
-                  <div className="flex rounded-lg border border-slate-200 bg-white text-xs">
-                    <button
-                      onClick={() => setViewMode('list')}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-l-lg transition ${viewMode === 'list' ? 'bg-sky-50 text-sky-700' : 'text-slate-500 hover:bg-slate-50'}`}
-                      title="List view"
-                    >
-                      <LayoutList className="h-3.5 w-3.5" /> List
-                    </button>
-                    <button
-                      onClick={() => setViewMode('timeline')}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-r-lg border-l border-slate-200 transition ${viewMode === 'timeline' ? 'bg-sky-50 text-sky-700' : 'text-slate-500 hover:bg-slate-50'}`}
-                      title="Timeline view"
-                    >
-                      <Clock className="h-3.5 w-3.5" /> Timeline
-                    </button>
-                  </div>
-                </div>
+              {/* Day title */}
+              <div className="mb-3">
+                <input
+                  value={dayTitleValue}
+                  onChange={(e) => handleDayTitleChange(e.target.value)}
+                  className="input font-medium"
+                  placeholder="Day title (optional)…"
+                />
               </div>
 
-              {/* Nearby suggestions drawer */}
-              {nearbyOpen && selectedPOI && (
-                <NearbyDrawer
-                  center={{ lat: selectedPOI.lat, lng: selectedPOI.lng }}
-                  onAdd={(poi) => { handleAddPOI(poi); setNearbyOpen(false) }}
-                  onClose={() => setNearbyOpen(false)}
+              {/* Day notes — shown first */}
+              <div className="mb-4">
+                <SectionHeader
+                  title="Day notes"
+                  open={notesOpen}
+                  onToggle={() => setNotesOpen((o) => !o)}
+                  badge={!notesOpen && dayNotesValue ? '✓' : undefined}
+                  icon={<StickyNote className="h-3.5 w-3.5 text-slate-400" />}
                 />
-              )}
+                {notesOpen && (
+                  <textarea
+                    value={dayNotesValue}
+                    onChange={(e) => handleDayNotesChange(e.target.value)}
+                    rows={4}
+                    placeholder="Notes for this day…"
+                    className="input mt-2"
+                  />
+                )}
+              </div>
 
-              {viewMode === 'timeline' ? (
-                <TimelineView
-                  activities={localActivities}
-                  selectedId={selectedActivityId}
-                  onSelect={(id) => { setSelectedActivityId(id); setEditingActivityId(id) }}
-                />
+              {/* Stops */}
+              {localActivities.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
+                  <p>No stops yet.</p>
+                  <p className="mt-1 text-xs">Use the search box above to add a place.</p>
+                </div>
               ) : (
                 <>
-                  {/* Category filter pills */}
-                  {localActivities.some((a) => a.poi?.category) && (
-                    <div className="mb-3 flex flex-wrap gap-1.5">
-                      {[
-                        { value: '', label: 'All', emoji: '' },
-                        { value: 'sight', label: 'Sights', emoji: '🏛️' },
-                        { value: 'food', label: 'Food', emoji: '🍽️' },
-                        { value: 'hotel', label: 'Hotel', emoji: '🏨' },
-                        { value: 'transport', label: 'Transport', emoji: '🚌' },
-                        { value: 'other', label: 'Other', emoji: '📌' },
-                      ].map((c) => (
-                        <button
-                          key={c.value}
-                          onClick={() => setCategoryFilter(c.value)}
-                          className={`rounded-full border px-2.5 py-0.5 text-xs transition ${
-                            categoryFilter === c.value
-                              ? 'border-sky-500 bg-sky-50 text-sky-700'
-                              : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                          }`}
-                        >
-                          {c.emoji ? `${c.emoji} ` : ''}{c.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                  <SortableContext items={localActivities.map((a) => a.id)} strategy={verticalListSortingStrategy}>
-                    <div className="space-y-2">
-                      {(categoryFilter
-                        ? localActivities.filter((a) => a.poi?.category === categoryFilter)
-                        : localActivities
-                      ).map((a, i) => (
-                        <ActivityCard
-                          key={a.id}
-                          activity={a}
-                          index={i}
-                          selected={selectedActivityId === a.id}
-                          onSelect={() => { setSelectedActivityId(a.id); setEditingActivityId(a.id) }}
+                  <SectionHeader
+                    title="Stops"
+                    open={activitiesOpen}
+                    onToggle={() => setActivitiesOpen((o) => !o)}
+                    badge={localActivities.length}
+                  />
+                  {activitiesOpen && (
+                    <>
+                      <div className="mb-3 flex items-center justify-between">
+                        <span className="text-xs font-medium text-slate-500">{localActivities.length} {localActivities.length === 1 ? 'stop' : 'stops'}</span>
+                        <div className="flex items-center gap-2">
+                          {selectedPOI && (
+                            <button
+                              onClick={() => setNearbyOpen((o) => !o)}
+                              className="print-hide rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                              title="Discover nearby places"
+                            >
+                              {nearbyOpen ? 'Hide nearby' : '🔍 Nearby'}
+                            </button>
+                          )}
+                          <div className="flex rounded-lg border border-slate-200 bg-white text-xs">
+                            <button
+                              onClick={() => setViewMode('list')}
+                              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-l-lg transition ${viewMode === 'list' ? 'bg-sky-50 text-sky-700' : 'text-slate-500 hover:bg-slate-50'}`}
+                              title="List view"
+                            >
+                              <LayoutList className="h-3.5 w-3.5" /> List
+                            </button>
+                            <button
+                              onClick={() => setViewMode('timeline')}
+                              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-r-lg border-l border-slate-200 transition ${viewMode === 'timeline' ? 'bg-sky-50 text-sky-700' : 'text-slate-500 hover:bg-slate-50'}`}
+                              title="Timeline view"
+                            >
+                              <Clock className="h-3.5 w-3.5" /> Timeline
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {nearbyOpen && selectedPOI && (
+                        <NearbyDrawer
+                          center={{ lat: selectedPOI.lat, lng: selectedPOI.lng }}
+                          onAdd={(poi) => { handleAddPOI(poi); setNearbyOpen(false) }}
+                          onClose={() => setNearbyOpen(false)}
                         />
-                      ))}
-                    </div>
-                  </SortableContext>
-                  </DndContext>
+                      )}
+
+                      {viewMode === 'timeline' ? (
+                        <TimelineView
+                          activities={localActivities}
+                          selectedId={selectedActivityId}
+                          onSelect={(id) => { setSelectedActivityId(id); setEditingActivityId(id) }}
+                        />
+                      ) : (
+                        <>
+                          {localActivities.some((a) => a.poi?.category) && (
+                            <div className="mb-3 flex flex-wrap gap-1.5">
+                              {[
+                                { value: '', label: 'All', emoji: '' },
+                                { value: 'sight', label: 'Sights', emoji: '🏛️' },
+                                { value: 'food', label: 'Food', emoji: '🍽️' },
+                                { value: 'hotel', label: 'Hotel', emoji: '🏨' },
+                                { value: 'transport', label: 'Transport', emoji: '🚌' },
+                                { value: 'other', label: 'Other', emoji: '📌' },
+                              ].map((c) => (
+                                <button
+                                  key={c.value}
+                                  onClick={() => setCategoryFilter(c.value)}
+                                  className={`rounded-full border px-2.5 py-0.5 text-xs transition ${
+                                    categoryFilter === c.value
+                                      ? 'border-sky-500 bg-sky-50 text-sky-700'
+                                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                                  }`}
+                                >
+                                  {c.emoji ? `${c.emoji} ` : ''}{c.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                            <SortableContext items={localActivities.map((a) => a.id)} strategy={verticalListSortingStrategy}>
+                              <div className="space-y-2">
+                                {(categoryFilter
+                                  ? localActivities.filter((a) => a.poi?.category === categoryFilter)
+                                  : localActivities
+                                ).map((a, i) => (
+                                  <ActivityCard
+                                    key={a.id}
+                                    activity={a}
+                                    index={i}
+                                    selected={selectedActivityId === a.id}
+                                    onSelect={() => { setSelectedActivityId(a.id); setEditingActivityId(a.id) }}
+                                  />
+                                ))}
+                              </div>
+                            </SortableContext>
+                          </DndContext>
+                        </>
+                      )}
+                    </>
+                  )}
                 </>
               )}
-              </>}
             </>
-          )}
-
-          {activeTabKind === 'day' && selectedDay && (
-            <div className="mt-4">
-              <SectionHeader
-                title="Day notes"
-                open={notesOpen}
-                onToggle={() => setNotesOpen((o) => !o)}
-                badge={!notesOpen && dayNotesValue ? '✓' : undefined}
-                icon={<StickyNote className="h-3.5 w-3.5 text-slate-400" />}
-              />
-              {notesOpen && (
-                <textarea
-                  value={dayNotesValue}
-                  onChange={(e) => handleDayNotesChange(e.target.value)}
-                  rows={4}
-                  placeholder="Notes for this day…"
-                  className="input mt-2"
-                />
-              )}
-            </div>
           )}
         {/* Budget summary */}
           {activeTabKind === 'day' && days.length > 0 && (() => {

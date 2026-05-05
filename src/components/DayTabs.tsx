@@ -1,21 +1,39 @@
-import { Plus, X } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Plus, Settings2, X } from 'lucide-react'
 import clsx from 'clsx'
 import type { Day } from '@/lib/types'
 import { formatDateISO } from '@/lib/utils'
 
+export type DayTabConfig = {
+  showDate: boolean
+  showTitle: boolean
+  showCount: boolean
+}
+
+export const DEFAULT_DAY_TAB_CONFIG: DayTabConfig = {
+  showDate: true,
+  showTitle: true,
+  showCount: true,
+}
+
 export default function DayTabs({
-  days, selectedId, onSelect, onAddDay, onRemoveDay,
+  days, selectedId, onSelect, onAddDay, onRemoveDay, config = DEFAULT_DAY_TAB_CONFIG, onConfigChange,
 }: {
   days: Day[]
   selectedId: string | null
   onSelect: (id: string) => void
   onAddDay: () => void
   onRemoveDay?: (id: string) => void
+  config?: DayTabConfig
+  onConfigChange?: (cfg: DayTabConfig) => void
 }) {
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const settingsRef = useRef<HTMLDivElement>(null)
+
   return (
     <div className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1">
       {days.map((d, i) => (
-        <div key={d.id} className="group relative">
+        <div key={d.id} className="group relative flex-shrink-0">
           <button
             onClick={() => onSelect(d.id)}
             className={clsx(
@@ -26,8 +44,17 @@ export default function DayTabs({
                 : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
             )}
           >
-            <span className="font-medium">Day {i + 1}</span>
-            <span className="ml-2 text-xs text-slate-500">{formatDateISO(d.date)}</span>
+            {config.showTitle && d.title ? (
+              <span className="font-medium">{d.title}</span>
+            ) : (
+              <span className="font-medium">Day {i + 1}</span>
+            )}
+            {config.showDate && (
+              <span className="ml-2 text-xs text-slate-500">{formatDateISO(d.date)}</span>
+            )}
+            {config.showCount && (
+              <span className="ml-1.5 text-[10px] text-slate-400">({d.activities.length})</span>
+            )}
           </button>
           {onRemoveDay && days.length > 1 && (
             <button
@@ -42,11 +69,48 @@ export default function DayTabs({
       ))}
       <button
         onClick={onAddDay}
-        className="flex items-center gap-1 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-50"
+        className="flex flex-shrink-0 items-center gap-1 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-50"
       >
         <Plus className="h-3.5 w-3.5" />
         Add day
       </button>
+
+      {onConfigChange && (
+        <div className="relative flex-shrink-0" ref={settingsRef}>
+          <button
+            onClick={() => setSettingsOpen((o) => !o)}
+            title="Customize day tabs"
+            className={clsx(
+              'rounded p-1.5 text-slate-400 transition hover:bg-slate-100',
+              settingsOpen && 'bg-slate-100 text-slate-600',
+            )}
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+          </button>
+          {settingsOpen && (
+            <div className="absolute left-0 top-full z-20 mt-1 w-44 rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Show in tab</p>
+              {(
+                [
+                  { key: 'showTitle', label: 'Day title / number' },
+                  { key: 'showDate', label: 'Date' },
+                  { key: 'showCount', label: 'Stop count' },
+                ] as { key: keyof DayTabConfig; label: string }[]
+              ).map(({ key, label }) => (
+                <label key={key} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-xs text-slate-700 hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={config[key]}
+                    onChange={() => onConfigChange({ ...config, [key]: !config[key] })}
+                    className="h-3 w-3 rounded accent-sky-600"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
