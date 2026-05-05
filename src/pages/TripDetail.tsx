@@ -602,27 +602,7 @@ export default function TripDetail() {
       {!showOverview && (
       <div className="border-b border-slate-200 bg-white">
         <div className="mx-auto max-w-7xl px-4">
-          {/* Search + add controls */}
-          <div className="flex items-center gap-2 border-b border-slate-100 py-2">
-            <div className="flex-1">
-              <PlacesAutocomplete onSelect={handleAddPOI} placeholder="Search to add a stop…" />
-            </div>
-            <button
-              onClick={handleAddNote}
-              className="flex-shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
-              title="Add note"
-            >
-              + Note
-            </button>
-            <button
-              onClick={handleAddTransport}
-              className="flex-shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
-              title="Add transport"
-            >
-              + Transport
-            </button>
-          </div>
-          {/* Full-width scrollable tabs row */}
+          {/* Scrollable tabs row */}
           <div className="flex items-center gap-2 overflow-x-auto py-2">
             <DayTabs
               days={days}
@@ -974,9 +954,33 @@ export default function TripDetail() {
               </div>
             )
           })()}
+
+          {/* Quick-add buttons at the bottom of the sidebar */}
+          {(activeTabKind === 'day' ? !!selectedDay : !!selectedList) && (
+            <div className="mt-4 flex gap-2 border-t border-slate-200 pt-4">
+              <button
+                onClick={handleAddNote}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                <StickyNote className="h-3.5 w-3.5" /> Note
+              </button>
+              <button
+                onClick={handleAddTransport}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                🚌 Transport
+              </button>
+            </div>
+          )}
         </aside>
 
         <section className={`relative ${mobileTab === 'map' ? 'block' : 'hidden md:block'}`}>
+          {/* Search overlay on map */}
+          <div className="absolute left-1/2 top-3 z-10 w-full max-w-sm -translate-x-1/2 px-3">
+            <div className="rounded-xl shadow-lg">
+              <PlacesAutocomplete onSelect={handleAddPOI} placeholder="Search to add a stop…" />
+            </div>
+          </div>
           <TripMap
             activities={activeActivities}
             selectedId={selectedActivityId ?? undefined}
