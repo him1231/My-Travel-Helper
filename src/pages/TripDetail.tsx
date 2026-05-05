@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { nanoid } from 'nanoid'
-import { ChevronDown, ChevronLeft, Calendar, Cloud, Compass, LayoutGrid, LayoutList, Link2, LogOut, MapPin, Printer, StickyNote, Clock, UserPlus } from 'lucide-react'
+import { ChevronDown, ChevronLeft, Calendar, Cloud, Compass, LayoutGrid, LayoutList, Link2, LogOut, MapPin, Plus, Printer, StickyNote, Clock, UserPlus, X } from 'lucide-react'
 import {
   DndContext, PointerSensor, useSensor, useSensors,
   type DragEndEvent, closestCenter,
@@ -20,8 +20,8 @@ import TripMap from '@/components/TripMap'
 import TimelineView from '@/components/TimelineView'
 import NearbyDrawer from '@/components/NearbyDrawer'
 import WeatherWidget from '@/components/WeatherWidget'
-import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, reorderActivities, updateActivity, moveActivityBetweenDays } from '@/lib/firestore/trips'
-import type { Trip, Day, Activity, POI } from '@/lib/types'
+import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, reorderActivities, updateActivity, removeActivity, moveActivityBetweenDays, subscribeScratchLists, addScratchList, renameScratchList, removeScratchList, addActivityToList, updateActivityInList, removeActivityFromList, moveBetweenDayAndList, moveFromListToDay, moveBetweenLists } from '@/lib/firestore/trips'
+import type { Trip, Day, Activity, POI, ScratchList } from '@/lib/types'
 import { todayISO, addDaysISO, formatDateISO, formatMoney, exportIcal } from '@/lib/utils'
 
 function SectionHeader({
@@ -75,12 +75,16 @@ export default function TripDetail() {
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteBusy, setInviteBusy] = useState(false)
-  const [weatherVisible, setWeatherVisible] = useState(true)
+  const [weatherVisible, setWeatherVisible] = useState(false)
   const [activitiesOpen, setActivitiesOpen] = useState(true)
   const [budgetOpen, setBudgetOpen] = useState(true)
   const [checklistOpen, setChecklistOpen] = useState(true)
   const [showOverview, setShowOverview] = useState(false)
   const fetchingRoutesRef = useRef<Set<string>>(new Set())
+  const [scratchLists, setScratchLists] = useState<ScratchList[]>([])
+  const [activeTabKind, setActiveTabKind] = useState<'day' | 'list'>('day')
+  const [selectedListId, setSelectedListId] = useState<string | null>(null)
+  const [listNameValue, setListNameValue] = useState('')
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -94,7 +98,8 @@ export default function TripDetail() {
       setLoading(false)
     })
     const unsubD = subscribeDays(tripId, (d) => setDays(d))
-    return () => { unsubT(); unsubD() }
+    const unsubL = subscribeScratchLists(tripId, setScratchLists)
+    return () => { unsubT(); unsubD(); unsubL() }
   }, [tripId])
 
   useEffect(() => {
@@ -113,18 +118,31 @@ export default function TripDetail() {
   )
   const editingActivity = useMemo(() => {
     if (!editingActivityId) return null
-    // Search all days so overview-mode edits work correctly
     for (const d of days) {
       const found = d.activities.find((a) => a.id === editingActivityId)
       if (found) return found
     }
+    for (const l of scratchLists) {
+      const found = l.activities.find((a) => a.id === editingActivityId)
+      if (found) return found
+    }
     return null
-  }, [days, editingActivityId])
+  }, [days, scratchLists, editingActivityId])
 
-  const editingDay = useMemo(() => {
-    if (!editingActivityId) return null
-    return days.find((d) => d.activities.some((a) => a.id === editingActivityId)) ?? null
-  }, [days, editingActivityId])
+  const editingDay = useMemo(
+    () => (editingActivityId ? days.find((d) => d.activities.some((a) => a.id === editingActivityId)) ?? null : null),
+    [days, editingActivityId],
+  )
+
+  const editingList = useMemo(
+    () => (editingActivityId ? scratchLists.find((l) => l.activities.some((a) => a.id === editingActivityId)) ?? null : null),
+    [scratchLists, editingActivityId],
+  )
+
+  const selectedList = useMemo(
+    () => (activeTabKind === 'list' ? scratchLists.find((l) => l.id === selectedListId) ?? null : null),
+    [activeTabKind, selectedListId, scratchLists],
+  )
   const selectedPOI = useMemo(
     () => localActivities.find((a) => a.id === selectedActivityId)?.poi ?? null,
     [localActivities, selectedActivityId],
@@ -135,10 +153,16 @@ export default function TripDetail() {
     setDayNotesValue(selectedDay?.notes ?? '')
   }, [selectedDayId, selectedDay?.notes])
 
+  // Sync list name input when selected list changes
+  useEffect(() => {
+    setListNameValue(selectedList?.name ?? '')
+  }, [selectedList?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Keep local activities in sync with Firestore (but don't override during active drag)
   useEffect(() => {
+    if (activeTabKind !== 'day') return
     setLocalActivities(selectedDay?.activities ?? [])
-  }, [selectedDay?.activities])
+  }, [selectedDay?.activities, activeTabKind])
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
@@ -156,6 +180,8 @@ export default function TripDetail() {
       setLocalActivities(selectedDay.activities) // rollback
     }
   }
+
+  const activeActivities = activeTabKind === 'list' ? (selectedList?.activities ?? []) : localActivities
 
   // Auto-fetch drive routes for transport activities that have mode=drive but no polyline yet
   useEffect(() => {
@@ -255,6 +281,11 @@ export default function TripDetail() {
   }
 
   const handleAddPOI = async (poi: POI) => {
+    if (activeTabKind === 'list' && selectedList && tripId) {
+      const activity: Activity = { id: nanoid(8), order: selectedList.activities.length, type: 'poi', title: poi.name, poi }
+      try { await addActivityToList(tripId, selectedList, activity) } catch (e) { console.error(e); toast.error('Failed to add stop') }
+      return
+    }
     let day = selectedDay
     if (!day) {
       const date = trip.startDate ?? todayISO()
@@ -282,36 +313,27 @@ export default function TripDetail() {
   }
 
   const handleAddNote = async () => {
+    if (activeTabKind === 'list' && selectedList && tripId) {
+      const activity: Activity = { id: nanoid(8), order: selectedList.activities.length, type: 'note', title: 'Note', notes: '' }
+      try { await addActivityToList(tripId, selectedList, activity); setEditingActivityId(activity.id) } catch (e) { console.error(e) }
+      return
+    }
     if (!tripId || !selectedDay) return
-    const activity: Activity = {
-      id: nanoid(8),
-      order: selectedDay.activities.length,
-      type: 'note',
-      title: 'Note',
-      notes: '',
-    }
-    try {
-      await addActivity(tripId, selectedDay, activity)
-      setEditingActivityId(activity.id)
-    } catch (e) {
-      console.error(e); toast.error('Failed to add note')
-    }
+    const activity: Activity = { id: nanoid(8), order: selectedDay.activities.length, type: 'note', title: 'Note', notes: '' }
+    try { await addActivity(tripId, selectedDay, activity); setEditingActivityId(activity.id) }
+    catch (e) { console.error(e); toast.error('Failed to add note') }
   }
 
   const handleAddTransport = async () => {
+    if (activeTabKind === 'list' && selectedList && tripId) {
+      const activity: Activity = { id: nanoid(8), order: selectedList.activities.length, type: 'transport', title: 'Transport' }
+      try { await addActivityToList(tripId, selectedList, activity); setEditingActivityId(activity.id) } catch (e) { console.error(e) }
+      return
+    }
     if (!tripId || !selectedDay) return
-    const activity: Activity = {
-      id: nanoid(8),
-      order: selectedDay.activities.length,
-      type: 'transport',
-      title: 'Transport',
-    }
-    try {
-      await addActivity(tripId, selectedDay, activity)
-      setEditingActivityId(activity.id)
-    } catch (e) {
-      console.error(e); toast.error('Failed to add transport')
-    }
+    const activity: Activity = { id: nanoid(8), order: selectedDay.activities.length, type: 'transport', title: 'Transport' }
+    try { await addActivity(tripId, selectedDay, activity); setEditingActivityId(activity.id) }
+    catch (e) { console.error(e); toast.error('Failed to add transport') }
   }
 
   const handleDayNotesChange = (value: string) => {
@@ -325,6 +347,31 @@ export default function TripDetail() {
         console.error(e)
       }
     }, 600)
+  }
+
+  const handleAddScratchList = async () => {
+    if (!tripId) return
+    try {
+      const id = await addScratchList(tripId, 'New list')
+      setSelectedListId(id)
+      setActiveTabKind('list')
+    } catch (e) { console.error(e); toast.error('Failed to create list') }
+  }
+
+  const handleRenameList = async (name: string) => {
+    if (!selectedList || !tripId || name.trim() === selectedList.name) return
+    try { await renameScratchList(tripId, selectedList.id, name.trim() || selectedList.name) }
+    catch (e) { console.error(e) }
+  }
+
+  const handleDeleteList = async () => {
+    if (!selectedList || !tripId) return
+    if (!confirm(`Delete list "${selectedList.name}"?`)) return
+    try {
+      await removeScratchList(tripId, selectedList.id)
+      setSelectedListId(null)
+      setActiveTabKind('day')
+    } catch (e) { console.error(e); toast.error('Failed to delete list') }
   }
 
   const handleShareTrip = async () => {
@@ -389,12 +436,21 @@ export default function TripDetail() {
     }
   }
 
-  const handleMoveActivity = async (activityId: string, fromDayId: string, toDayId: string) => {
-    const fromDay = days.find((d) => d.id === fromDayId)
-    const toDay = days.find((d) => d.id === toDayId)
-    if (!fromDay || !toDay) return
+  const handleMoveActivity = async (
+    activityId: string,
+    fromKind: 'day' | 'list', fromId: string,
+    toKind: 'day' | 'list', toId: string,
+  ) => {
+    if (fromKind === toKind && fromId === toId) return
     try {
-      await moveActivityBetweenDays(tripId, fromDay, toDay, activityId)
+      const fromDay = fromKind === 'day' ? days.find((d) => d.id === fromId) : null
+      const toDay = toKind === 'day' ? days.find((d) => d.id === toId) : null
+      const fromList = fromKind === 'list' ? scratchLists.find((l) => l.id === fromId) : null
+      const toList = toKind === 'list' ? scratchLists.find((l) => l.id === toId) : null
+      if (fromDay && toDay) await moveActivityBetweenDays(tripId, fromDay, toDay, activityId)
+      else if (fromDay && toList) await moveBetweenDayAndList(tripId, fromDay, toList, activityId)
+      else if (fromList && toDay) await moveFromListToDay(tripId, fromList, toDay, activityId)
+      else if (fromList && toList) await moveBetweenLists(tripId, fromList, toList, activityId)
     } catch (e) {
       console.error(e)
       toast.error('Failed to move activity')
@@ -516,11 +572,36 @@ export default function TripDetail() {
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-4 py-3">
           <DayTabs
             days={days}
-            selectedId={selectedDayId}
-            onSelect={setSelectedDayId}
+            selectedId={activeTabKind === 'day' ? selectedDayId : null}
+            onSelect={(id) => { setSelectedDayId(id); setActiveTabKind('day') }}
             onAddDay={handleAddDay}
             onRemoveDay={handleRemoveDay}
           />
+          {/* Scratch list tabs */}
+          <div className="flex flex-nowrap items-center gap-1.5">
+            {scratchLists.length > 0 && <div className="h-5 w-px flex-shrink-0 bg-slate-200" />}
+            {scratchLists.map((list) => (
+              <button
+                key={list.id}
+                onClick={() => { setSelectedListId(list.id); setActiveTabKind('list') }}
+                className={`flex-shrink-0 rounded-lg border py-1.5 px-3 text-sm transition ${
+                  activeTabKind === 'list' && selectedListId === list.id
+                    ? 'border-amber-400 bg-amber-50 text-amber-700'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                📋 {list.name}
+              </button>
+            ))}
+            <button
+              onClick={handleAddScratchList}
+              className="flex flex-shrink-0 items-center gap-1 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-50"
+              title="Add planning list"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              List
+            </button>
+          </div>
           <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
             <div className="flex-1 sm:w-72">
               <PlacesAutocomplete onSelect={handleAddPOI} placeholder="Search to add a stop…" />
@@ -556,9 +637,11 @@ export default function TripDetail() {
         <div className={`flex-1 overflow-hidden bg-slate-50 ${mobileTab === 'list' ? 'block' : 'hidden md:block'}`}>
           <OverviewView
             days={days}
+            scratchLists={scratchLists}
             onMoveActivity={handleMoveActivity}
-            onSelectActivity={(activityId, dayId) => {
-              setSelectedDayId(dayId)
+            onSelectActivity={(activityId, kind, containerId) => {
+              if (kind === 'day') { setSelectedDayId(containerId); setActiveTabKind('day') }
+              else { setSelectedListId(containerId); setActiveTabKind('list') }
               setEditingActivityId(activityId)
             }}
           />
@@ -567,9 +650,41 @@ export default function TripDetail() {
 
       <div className={`grid flex-1 grid-cols-1 overflow-hidden md:grid-cols-[minmax(360px,40%)_1fr] ${showOverview ? 'hidden' : ''}`}>
         <aside className={`print-area overflow-y-auto border-r border-slate-200 bg-slate-50 p-4 ${mobileTab === 'list' ? 'block' : 'hidden md:block'}`}>
-          {!selectedDay ? (
+          {activeTabKind === 'list' && selectedList ? (
+            <div>
+              <div className="mb-3 flex items-center gap-2">
+                <input
+                  value={listNameValue}
+                  onChange={(e) => setListNameValue(e.target.value)}
+                  onBlur={(e) => handleRenameList(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                  className="input flex-1 font-medium"
+                  placeholder="List name…"
+                />
+                <button
+                  onClick={handleDeleteList}
+                  className="flex-shrink-0 rounded p-1 text-slate-400 hover:text-red-500"
+                  title="Delete list"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              {selectedList.activities.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
+                  <p>Empty list.</p>
+                  <p className="mt-1 text-xs">Use the search box above to add a place.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {selectedList.activities.map((a, i) => (
+                    <ListActivityRow key={a.id} activity={a} index={i} onEdit={() => setEditingActivityId(a.id)} />
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : !selectedDay ? (
             <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
-              <p>No days yet — click “Add day” to start.</p>
+              <p>No days yet — click "Add day" to start.</p>
             </div>
           ) : selectedDay.activities.length === 0 ? (
             <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
@@ -682,7 +797,7 @@ export default function TripDetail() {
             </>
           )}
 
-          {selectedDay && (
+          {activeTabKind === 'day' && selectedDay && (
             <div className="mt-4">
               <SectionHeader
                 title="Day notes"
@@ -703,7 +818,7 @@ export default function TripDetail() {
             </div>
           )}
         {/* Budget summary */}
-          {days.length > 0 && (() => {
+          {activeTabKind === 'day' && days.length > 0 && (() => {
             const currency = trip.currency || 'USD'
             const allActivities = days.flatMap((d) => d.activities)
             const tripTotal = allActivities.reduce((sum, a) => sum + (a.cost?.amount ?? 0), 0)
@@ -753,7 +868,7 @@ export default function TripDetail() {
           })()}
 
           {/* Checklist */}
-          {trip && (() => {
+          {activeTabKind === 'day' && trip && (() => {
             const checklist = trip.checklist ?? []
             const doneCount = checklist.filter((i) => i.done).length
             return (
@@ -811,7 +926,7 @@ export default function TripDetail() {
 
         <section className={`relative ${mobileTab === 'map' ? 'block' : 'hidden md:block'}`}>
           <TripMap
-            activities={selectedDay?.activities ?? []}
+            activities={activeActivities}
             selectedId={selectedActivityId ?? undefined}
             onSelectActivity={(id) => { setSelectedActivityId(id); setEditingActivityId(id) }}
             fallbackCenter={trip.destination ? { lat: trip.destination.lat, lng: trip.destination.lng } : undefined}
@@ -844,14 +959,20 @@ export default function TripDetail() {
         </button>
       </nav>
 
-      {editingDay && (
+      {(editingDay || editingList) && (
         <ActivityEditModal
           open={!!editingActivity}
           onClose={() => setEditingActivityId(null)}
-          tripId={tripId}
-          day={editingDay}
           activity={editingActivity}
           currency={trip.currency}
+          onSave={async (patch) => {
+            if (editingDay) await updateActivity(tripId, editingDay, editingActivity!.id, patch)
+            else if (editingList) await updateActivityInList(tripId, editingList, editingActivity!.id, patch)
+          }}
+          onDelete={async () => {
+            if (editingDay) await removeActivity(tripId, editingDay, editingActivity!.id)
+            else if (editingList) await removeActivityFromList(tripId, editingList, editingActivity!.id)
+          }}
         />
       )}
 
@@ -891,6 +1012,35 @@ export default function TripDetail() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function ListActivityRow({ activity, index, onEdit }: { activity: Activity; index: number; onEdit: () => void }) {
+  const icon = activity.type === 'poi' ? '📍' : activity.type === 'transport' ? '🚌' : '📝'
+  return (
+    <div
+      onClick={onEdit}
+      className="cursor-pointer rounded-lg border border-slate-200 bg-white p-3 transition hover:border-amber-300 hover:shadow-sm"
+    >
+      <div className="flex items-start gap-2">
+        <span className="mt-0.5 text-sm">{icon}</span>
+        <div className="min-w-0 flex-1">
+          <div className="font-medium text-slate-900">{activity.title}</div>
+          {activity.poi?.address && (
+            <div className="mt-0.5 truncate text-xs text-slate-500">{activity.poi.address}</div>
+          )}
+          {activity.startTime && (
+            <div className="mt-0.5 text-xs text-slate-400">
+              {activity.startTime}{activity.durationMinutes ? ` · ${activity.durationMinutes}m` : ''}
+            </div>
+          )}
+          {activity.notes && (
+            <p className="mt-1 line-clamp-2 text-xs text-slate-500">{activity.notes}</p>
+          )}
+        </div>
+        <span className="flex-shrink-0 text-[10px] text-slate-400">#{index + 1}</span>
+      </div>
     </div>
   )
 }

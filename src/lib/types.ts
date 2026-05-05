@@ -44,6 +44,13 @@ export type Day = {
   activities: Activity[]
 }
 
+export type ScratchList = {
+  id: string
+  name: string
+  activities: Activity[]
+  createdAt: Timestamp | null
+}
+
 export type ChecklistItem = { id: string; text: string; done: boolean }
 
 export type Trip = {

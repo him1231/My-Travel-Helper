@@ -37,6 +37,15 @@ service cloud.firestore {
                     || (trip().shareToken != null && trip().shareToken != '');
         allow write: if isOwner(trip()) || isMember(trip());
       }
+
+      match /lists/{listId} {
+        function trip() {
+          return get(/databases/$(database)/documents/trips/$(tripId)).data;
+        }
+        allow read: if isOwner(trip()) || isMember(trip())
+                    || (trip().shareToken != null && trip().shareToken != '');
+        allow write: if isOwner(trip()) || isMember(trip());
+      }
     }
   }
 }

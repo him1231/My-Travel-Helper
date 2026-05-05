@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { X } from 'lucide-react'
 import Modal from '@/components/Modal'
-import type { Activity, ActivityCategory, Day, RouteInfo } from '@/lib/types'
-import { updateActivity, removeActivity } from '@/lib/firestore/trips'
+import type { Activity, ActivityCategory, RouteInfo } from '@/lib/types'
 
 const CATEGORIES: { value: ActivityCategory; label: string; emoji: string }[] = [
   { value: 'sight', label: 'Sight', emoji: '🏛️' },
@@ -14,14 +13,14 @@ const CATEGORIES: { value: ActivityCategory; label: string; emoji: string }[] = 
 ]
 
 export default function ActivityEditModal({
-  open, onClose, tripId, day, activity, currency,
+  open, onClose, activity, currency, onSave, onDelete,
 }: {
   open: boolean
   onClose: () => void
-  tripId: string
-  day: Day
   activity: Activity | null
   currency: string
+  onSave: (patch: Partial<Activity>) => Promise<void>
+  onDelete: () => Promise<void>
 }) {
   const [title, setTitle] = useState('')
   const [category, setCategory] = useState<ActivityCategory | ''>('')
@@ -71,14 +70,11 @@ export default function ActivityEditModal({
       }
       if (activity.type === 'transport') {
         const prevMode = activity.route?.mode ?? 'straight'
-        if (routeMode !== prevMode) {
-          // Clear polyline when switching modes so it gets re-fetched if drive
-          patch.route = { mode: routeMode } as RouteInfo
-        } else if (!activity.route) {
+        if (routeMode !== prevMode || !activity.route) {
           patch.route = { mode: routeMode } as RouteInfo
         }
       }
-      await updateActivity(tripId, day, activity.id, patch)
+      await onSave(patch)
       onClose()
     } catch (e) {
       toast.error('Save failed')
@@ -89,7 +85,7 @@ export default function ActivityEditModal({
   const handleDelete = async () => {
     if (!confirm('Remove this activity?')) return
     try {
-      await removeActivity(tripId, day, activity.id)
+      await onDelete()
       onClose()
     } catch (e) {
       toast.error('Delete failed')
