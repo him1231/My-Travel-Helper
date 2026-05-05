@@ -986,6 +986,7 @@ export default function TripDetail() {
             selectedId={selectedActivityId ?? undefined}
             onSelectActivity={(id) => { setSelectedActivityId(id); setEditingActivityId(id) }}
             fallbackCenter={trip.destination ? { lat: trip.destination.lat, lng: trip.destination.lng } : undefined}
+            onAddPOI={handleAddPOI}
           />
         </section>
       </div>
