@@ -987,6 +987,22 @@ export default function TripDetail() {
             onSelectActivity={(id) => { setSelectedActivityId(id); setEditingActivityId(id) }}
             fallbackCenter={trip.destination ? { lat: trip.destination.lat, lng: trip.destination.lng } : undefined}
             onAddPOI={handleAddPOI}
+            allDays={days}
+            scratchLists={scratchLists}
+            onAddToList={async (poi, listId) => {
+              const list = scratchLists.find((l) => l.id === listId)
+              if (!list || !tripId) return
+              const activity: Activity = { id: nanoid(8), order: list.activities.length, type: 'poi', title: poi.name, poi }
+              try { await addActivityToList(tripId, list, activity) } catch (e) { console.error(e); toast.error('Failed to add to list') }
+            }}
+            onOptimizeRoute={async (orderedIds) => {
+              if (!tripId || !selectedDay) return
+              const map = new Map(localActivities.map((a) => [a.id, a]))
+              const reordered = orderedIds.map((id, i) => ({ ...map.get(id)!, order: i })).filter(Boolean) as Activity[]
+              setLocalActivities(reordered)
+              try { await reorderActivities(tripId, selectedDay, orderedIds) }
+              catch (e) { console.error(e); toast.error('Optimize failed'); setLocalActivities(selectedDay.activities) }
+            }}
           />
         </section>
       </div>
