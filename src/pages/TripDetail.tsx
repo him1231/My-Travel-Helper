@@ -601,18 +601,39 @@ export default function TripDetail() {
 
       {!showOverview && (
       <div className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-4 py-3">
-          <DayTabs
-            days={days}
-            selectedId={activeTabKind === 'day' ? selectedDayId : null}
-            onSelect={(id) => { setSelectedDayId(id); setActiveTabKind('day') }}
-            onAddDay={handleAddDay}
-            onRemoveDay={handleRemoveDay}
-            config={dayTabConfig}
-            onConfigChange={handleDayTabConfigChange}
-          />
-          {/* Scratch list tabs */}
-          <div className="flex flex-nowrap items-center gap-1.5">
+        <div className="mx-auto max-w-7xl px-4">
+          {/* Search + add controls */}
+          <div className="flex items-center gap-2 border-b border-slate-100 py-2">
+            <div className="flex-1">
+              <PlacesAutocomplete onSelect={handleAddPOI} placeholder="Search to add a stop…" />
+            </div>
+            <button
+              onClick={handleAddNote}
+              className="flex-shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              title="Add note"
+            >
+              + Note
+            </button>
+            <button
+              onClick={handleAddTransport}
+              className="flex-shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              title="Add transport"
+            >
+              + Transport
+            </button>
+          </div>
+          {/* Full-width scrollable tabs row */}
+          <div className="flex items-center gap-2 overflow-x-auto py-2">
+            <DayTabs
+              days={days}
+              selectedId={activeTabKind === 'day' ? selectedDayId : null}
+              onSelect={(id) => { setSelectedDayId(id); setActiveTabKind('day') }}
+              onAddDay={handleAddDay}
+              onRemoveDay={handleRemoveDay}
+              config={dayTabConfig}
+              onConfigChange={handleDayTabConfigChange}
+            />
+            {/* Scratch list tabs */}
             {scratchLists.length > 0 && <div className="h-5 w-px flex-shrink-0 bg-slate-200" />}
             {scratchLists.map((list) => (
               <button
@@ -634,25 +655,6 @@ export default function TripDetail() {
             >
               <Plus className="h-3.5 w-3.5" />
               List
-            </button>
-          </div>
-          <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
-            <div className="flex-1 sm:w-72">
-              <PlacesAutocomplete onSelect={handleAddPOI} placeholder="Search to add a stop…" />
-            </div>
-            <button
-              onClick={handleAddNote}
-              className="flex-shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
-              title="Add note"
-            >
-              + Note
-            </button>
-            <button
-              onClick={handleAddTransport}
-              className="flex-shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
-              title="Add transport"
-            >
-              + Transport
             </button>
           </div>
         </div>
