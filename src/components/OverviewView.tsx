@@ -4,10 +4,12 @@ import {
   useSensor, useSensors,
   type DragStartEvent, type DragEndEvent,
 } from '@dnd-kit/core'
-import { Map, Marker, useMap } from '@vis.gl/react-google-maps'
+import { Map, Marker, useApiIsLoaded, useMap } from '@vis.gl/react-google-maps'
 import { LayoutGrid, Map as MapIcon } from 'lucide-react'
 import type { Activity, Day, ScratchList } from '@/lib/types'
 import { formatDateISO } from '@/lib/utils'
+import { useMapsAuthFailed } from '@/lib/mapsStatus'
+import MapErrorBoundary from '@/components/MapErrorBoundary'
 
 const DAY_COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6','#ec4899','#14b8a6']
 const LIST_COLOR = '#94a3b8'
@@ -28,9 +30,10 @@ type Props = {
   ) => Promise<void>
   onSelectActivity?: (activityId: string, kind: 'day' | 'list', containerId: string) => void
   onSelectDay?: (dayId: string) => void
+  onSelectList?: (listId: string) => void
 }
 
-export default function OverviewView({ days, scratchLists, onMoveActivity, onSelectActivity, onSelectDay }: Props) {
+export default function OverviewView({ days, scratchLists, onMoveActivity, onSelectActivity, onSelectDay, onSelectList }: Props) {
   const [view, setView] = useState<'kanban' | 'map'>('kanban')
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
@@ -86,7 +89,7 @@ export default function OverviewView({ days, scratchLists, onMoveActivity, onSel
                 <DayColumn key={day.id} day={day} dayIdx={dayIdx} onSelectActivity={onSelectActivity} onSelectDay={onSelectDay} />
               ))}
               {scratchLists.map((list) => (
-                <ListColumn key={list.id} list={list} onSelectActivity={onSelectActivity} />
+                <ListColumn key={list.id} list={list} onSelectActivity={onSelectActivity} onSelectList={onSelectList} />
               ))}
               {days.length === 0 && scratchLists.length === 0 && (
                 <div className="flex items-center justify-center p-8 text-sm text-slate-400">
@@ -153,10 +156,11 @@ function DayColumn({
 }
 
 function ListColumn({
-  list, onSelectActivity,
+  list, onSelectActivity, onSelectList,
 }: {
   list: ScratchList
   onSelectActivity?: (activityId: string, kind: 'day' | 'list', containerId: string) => void
+  onSelectList?: (listId: string) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `list::${list.id}` })
   return (
@@ -164,7 +168,11 @@ function ListColumn({
       ref={setNodeRef}
       className={`flex w-56 flex-shrink-0 flex-col rounded-xl border transition-colors ${isOver ? 'border-amber-400 bg-amber-50' : 'border-amber-200 bg-amber-50/40'}`}
     >
-      <div className="rounded-t-xl border-b border-amber-200 bg-amber-50 px-3 py-2.5">
+      <div
+        className={`rounded-t-xl border-b border-amber-200 bg-amber-50 px-3 py-2.5 ${onSelectList ? 'cursor-pointer hover:bg-amber-100' : ''}`}
+        onClick={onSelectList ? () => onSelectList(list.id) : undefined}
+        title={onSelectList ? 'Open list detail' : undefined}
+      >
         <div className="flex items-center gap-1">
           <span className="text-xs">📋</span>
           <div className="truncate text-xs font-semibold text-amber-800">{list.name}</div>
@@ -234,6 +242,8 @@ function ActivityChip({ activity, ghost }: { activity: Activity; ghost?: boolean
 // ── Overview map ───────────────────────────────────────────────────────────
 
 function OverviewMap({ days, scratchLists }: { days: Day[]; scratchLists: ScratchList[] }) {
+  const apiLoaded = useApiIsLoaded()
+  const authFailed = useMapsAuthFailed()
   const allPoints = useMemo(() => {
     const pts: { lat: number; lng: number }[] = []
     days.forEach((d) => d.activities.forEach((a) => { if (a.poi) pts.push({ lat: a.poi.lat, lng: a.poi.lng }) }))
@@ -241,7 +251,24 @@ function OverviewMap({ days, scratchLists }: { days: Day[]; scratchLists: Scratc
     return pts
   }, [days, scratchLists])
 
+  if (authFailed) {
+    return (
+      <div className="grid h-full w-full place-items-center bg-slate-50 p-4 text-center text-sm text-slate-500">
+        Map unavailable — Google Maps API key is not authorized for this domain.
+      </div>
+    )
+  }
+
+  if (!apiLoaded) {
+    return (
+      <div className="grid h-full w-full place-items-center bg-slate-50 text-sm text-slate-400">
+        Loading map…
+      </div>
+    )
+  }
+
   return (
+    <MapErrorBoundary>
     <Map defaultCenter={{ lat: 20, lng: 0 }} defaultZoom={2} gestureHandling="greedy" style={{ width: '100%', height: '100%' }}>
       <FitAllPoints points={allPoints} />
       <OverviewMarkers days={days} scratchLists={scratchLists} />
@@ -262,6 +289,7 @@ function OverviewMap({ days, scratchLists }: { days: Day[]; scratchLists: Scratc
         </div>
       )}
     </Map>
+    </MapErrorBoundary>
   )
 }
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { nanoid } from 'nanoid'
-import { ChevronDown, ChevronLeft, Calendar, Cloud, Compass, LayoutGrid, LayoutList, Link2, LogOut, MapPin, Plus, Printer, StickyNote, Clock, UserPlus, X } from 'lucide-react'
+import { ChevronDown, ChevronLeft, Calendar, Cloud, Compass, LayoutGrid, LayoutList, Link2, LogOut, Map as MapIcon, MapPin, Plus, Printer, StickyNote, Clock, UserPlus, X } from 'lucide-react'
 import type { DayTabConfig } from '@/components/DayTabs'
 import { DEFAULT_DAY_TAB_CONFIG } from '@/components/DayTabs'
 import {
@@ -82,6 +82,7 @@ export default function TripDetail() {
   const [budgetOpen, setBudgetOpen] = useState(true)
   const [checklistOpen, setChecklistOpen] = useState(true)
   const [showOverview, setShowOverview] = useState(false)
+  const [fullMapView, setFullMapView] = useState(false)
   const fetchingRoutesRef = useRef<Set<string>>(new Set())
   const [scratchLists, setScratchLists] = useState<ScratchList[]>([])
   const [activeTabKind, setActiveTabKind] = useState<'day' | 'list'>('day')
@@ -375,6 +376,12 @@ export default function TripDetail() {
     setShowOverview(false)
   }
 
+  const handleSelectListFromOverview = (listId: string) => {
+    setSelectedListId(listId)
+    setActiveTabKind('list')
+    setShowOverview(false)
+  }
+
   const handleDayTabConfigChange = (cfg: DayTabConfig) => {
     setDayTabConfig(cfg)
     try { localStorage.setItem('dayTabConfig', JSON.stringify(cfg)) } catch { /* ignore */ }
@@ -527,11 +534,18 @@ export default function TripDetail() {
           {/* Actions + user */}
           <div className="flex flex-shrink-0 items-center gap-0.5">
             <button
-              onClick={() => setShowOverview((v) => !v)}
+              onClick={() => { setShowOverview((v) => !v); setFullMapView(false) }}
               title={showOverview ? 'Day view' : 'Trip overview'}
               className={`rounded p-1.5 transition ${showOverview ? 'text-sky-500 hover:bg-sky-50' : 'text-slate-400 hover:bg-slate-100'}`}
             >
               <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => { setFullMapView((v) => !v); setShowOverview(false) }}
+              title={fullMapView ? 'Show list + map' : 'Full map view'}
+              className={`rounded p-1.5 transition ${fullMapView ? 'text-sky-500 hover:bg-sky-50' : 'text-slate-400 hover:bg-slate-100'}`}
+            >
+              <MapIcon className="h-4 w-4" />
             </button>
             {trip.destination && (
               <button
@@ -599,10 +613,10 @@ export default function TripDetail() {
         </div>
       </div>
 
-      {!showOverview && (
+      {!showOverview && !fullMapView && (
       <div className="border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-7xl px-4">
-          {/* Scrollable tabs row */}
+        <div className="px-4">
+          {/* Day tabs row — full width */}
           <div className="flex items-center gap-2 overflow-x-auto py-2">
             <DayTabs
               days={days}
@@ -613,8 +627,10 @@ export default function TripDetail() {
               config={dayTabConfig}
               onConfigChange={handleDayTabConfigChange}
             />
-            {/* Scratch list tabs */}
-            {scratchLists.length > 0 && <div className="h-5 w-px flex-shrink-0 bg-slate-200" />}
+          </div>
+          {/* Scratch list bar — separate row, always visible */}
+          <div className="flex items-center gap-2 overflow-x-auto border-t border-slate-100 py-1.5">
+            <span className="flex-shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Lists</span>
             {scratchLists.map((list) => (
               <button
                 key={list.id}
@@ -622,7 +638,7 @@ export default function TripDetail() {
                 className={`flex-shrink-0 rounded-lg border py-1.5 px-3 text-sm transition ${
                   activeTabKind === 'list' && selectedListId === list.id
                     ? 'border-amber-400 bg-amber-50 text-amber-700'
-                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    : 'border-amber-200 bg-amber-50/40 text-amber-700 hover:bg-amber-50'
                 }`}
               >
                 📋 {list.name}
@@ -634,7 +650,7 @@ export default function TripDetail() {
               title="Add planning list"
             >
               <Plus className="h-3.5 w-3.5" />
-              List
+              Add list
             </button>
           </div>
         </div>
@@ -662,12 +678,13 @@ export default function TripDetail() {
               setEditingActivityId(activityId)
             }}
             onSelectDay={handleSelectDayFromOverview}
+            onSelectList={handleSelectListFromOverview}
           />
         </div>
       ) : null}
 
-      <div className={`grid flex-1 grid-cols-1 overflow-hidden md:grid-cols-[minmax(360px,40%)_1fr] ${showOverview ? 'hidden' : ''}`}>
-        <aside className={`print-area overflow-y-auto border-r border-slate-200 bg-slate-50 p-4 ${mobileTab === 'list' ? 'block' : 'hidden md:block'}`}>
+      <div className={`grid flex-1 grid-cols-1 overflow-hidden ${fullMapView ? '' : 'md:grid-cols-[minmax(360px,40%)_1fr]'} ${showOverview ? 'hidden' : ''}`}>
+        <aside className={`print-area overflow-y-auto border-r border-slate-200 bg-slate-50 p-4 ${fullMapView ? 'hidden' : (mobileTab === 'list' ? 'block' : 'hidden md:block')}`}>
           {activeTabKind === 'list' && selectedList ? (
             <div>
               <div className="mb-3 flex items-center gap-2">
@@ -974,7 +991,7 @@ export default function TripDetail() {
           )}
         </aside>
 
-        <section className={`relative ${mobileTab === 'map' ? 'block' : 'hidden md:block'}`}>
+        <section className={`relative ${fullMapView ? 'block' : (mobileTab === 'map' ? 'block' : 'hidden md:block')}`}>
           {/* Search overlay on map */}
           <div className="absolute left-1/2 top-3 z-10 w-full max-w-sm -translate-x-1/2 px-3">
             <div className="rounded-xl shadow-lg">

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Circle, Map, Marker, Polyline, useMap, useMapsLibrary } from '@vis.gl/react-google-maps'
+import { Circle, Map, Marker, Polyline, useApiIsLoaded, useMap, useMapsLibrary } from '@vis.gl/react-google-maps'
 import { Check, ChevronRight, Layers, Plus, Route, Star, X, Zap } from 'lucide-react'
 import type { Activity, ActivityCategory, Day, POI, ScratchList } from '@/lib/types'
+import { useMapsAuthFailed } from '@/lib/mapsStatus'
+import MapErrorBoundary from '@/components/MapErrorBoundary'
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -47,6 +49,12 @@ function makeLabelSvg(text: string): string {
       <rect x="0" y="0" width="${w}" height="20" rx="4" fill="white" stroke="#94a3b8" stroke-width="1" opacity="0.95"/>
       <text x="${w / 2}" y="14" text-anchor="middle" font-size="9.5" font-family="Arial,sans-serif" fill="#475569">${text}</text>
     </svg>`
+  )}`
+}
+
+function makeNumberPinSvg(label: string, color: string): string {
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="38" viewBox="0 0 28 38"><path fill="${color}" stroke="white" stroke-width="1.5" d="M14 1C7.4 1 2 6.4 2 13c0 9.5 12 24 12 24s12-14.5 12-24c0-6.6-5.4-12-12-12z"/><text x="14" y="17" text-anchor="middle" dominant-baseline="middle" font-size="11" font-weight="bold" fill="white" font-family="Arial,sans-serif">${label}</text></svg>`
   )}`
 }
 
@@ -101,7 +109,31 @@ type Props = {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function TripMap({
+export default function TripMap(props: Props) {
+  const apiLoaded = useApiIsLoaded()
+  const authFailed = useMapsAuthFailed()
+  if (authFailed) {
+    return (
+      <div className="grid h-full w-full place-items-center bg-slate-50 p-4 text-center text-sm text-slate-500">
+        Map unavailable — Google Maps API key is not authorized for this domain.
+      </div>
+    )
+  }
+  if (!apiLoaded) {
+    return (
+      <div className="grid h-full w-full place-items-center bg-slate-50 text-sm text-slate-400">
+        Loading map…
+      </div>
+    )
+  }
+  return (
+    <MapErrorBoundary>
+      <TripMapInner {...props} />
+    </MapErrorBoundary>
+  )
+}
+
+function TripMapInner({
   activities, selectedId, onSelectActivity, fallbackCenter,
   onAddPOI, allDays, scratchLists, onAddToList, onOptimizeRoute,
 }: Props) {
@@ -241,9 +273,13 @@ export default function TripMap({
           a.poi ? (
             <Marker key={a.id}
               position={{ lat: a.poi.lat, lng: a.poi.lng }}
-              label={{ text: String(idx + 1), color: 'white', fontWeight: 'bold' }}
+              icon={{
+                url: makeNumberPinSvg(String(idx + 1), selectedId === a.id ? '#f97316' : '#3b82f6'),
+                scaledSize: new google.maps.Size(selectedId === a.id ? 36 : 28, selectedId === a.id ? 49 : 38),
+                anchor: new google.maps.Point(selectedId === a.id ? 18 : 14, selectedId === a.id ? 49 : 38),
+              }}
+              zIndex={selectedId === a.id ? 999 : undefined}
               onClick={() => onSelectActivity?.(a.id)}
-              animation={selectedId === a.id ? google.maps.Animation.BOUNCE : undefined}
             />
           ) : null,
         )}

@@ -10,6 +10,7 @@ import Profile from './pages/Profile'
 import AuthGuard from './components/AuthGuard'
 import { useAuth } from './hooks/useAuth'
 import { GOOGLE_MAPS_API_KEY } from './lib/firebase'
+import './lib/mapsStatus'
 
 export default function App() {
   const { loading } = useAuth()

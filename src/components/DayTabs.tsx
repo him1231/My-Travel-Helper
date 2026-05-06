@@ -7,12 +7,14 @@ import { formatDateISO } from '@/lib/utils'
 
 export type DayTabConfig = {
   showDate: boolean
+  showNumber: boolean
   showTitle: boolean
   showCount: boolean
 }
 
 export const DEFAULT_DAY_TAB_CONFIG: DayTabConfig = {
   showDate: true,
+  showNumber: true,
   showTitle: true,
   showCount: true,
 }
@@ -31,6 +33,7 @@ export default function DayTabs({
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [popupPos, setPopupPos] = useState<{ top: number; left: number } | null>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
 
   const handleToggleSettings = () => {
     if (!settingsOpen && btnRef.current) {
@@ -44,6 +47,7 @@ export default function DayTabs({
     if (!settingsOpen) return
     const handler = (e: MouseEvent) => {
       if (btnRef.current?.contains(e.target as Node)) return
+      if (popupRef.current?.contains(e.target as Node)) return
       setSettingsOpen(false)
     }
     document.addEventListener('mousedown', handler)
@@ -65,11 +69,23 @@ export default function DayTabs({
                   : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
               )}
             >
-              {config.showTitle && d.title ? (
-                <span className="font-medium">{d.title}</span>
-              ) : (
-                <span className="font-medium">Day {i + 1}</span>
-              )}
+              {(() => {
+                const showNum = config.showNumber
+                const showTitle = config.showTitle && !!d.title
+                // Fallback so the button is never empty
+                const fallback = !showNum && !showTitle && !config.showDate
+                return (
+                  <>
+                    {showNum && <span className="font-medium">Day {i + 1}</span>}
+                    {showTitle && (
+                      <span className={`font-medium ${showNum ? 'ml-1.5 text-slate-600' : ''}`}>
+                        {showNum ? `· ${d.title}` : d.title}
+                      </span>
+                    )}
+                    {fallback && <span className="font-medium">Day {i + 1}</span>}
+                  </>
+                )
+              })()}
               {config.showDate && (
                 <span className="ml-2 text-xs text-slate-500">{formatDateISO(d.date)}</span>
               )}
@@ -114,13 +130,15 @@ export default function DayTabs({
 
       {settingsOpen && popupPos && onConfigChange && createPortal(
         <div
+          ref={popupRef}
           className="fixed z-50 w-44 rounded-lg border border-slate-200 bg-white p-2 shadow-lg"
           style={{ top: popupPos.top, left: popupPos.left }}
         >
           <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Show in tab</p>
           {(
             [
-              { key: 'showTitle', label: 'Day title / number' },
+              { key: 'showNumber', label: 'Day number' },
+              { key: 'showTitle', label: 'Day title' },
               { key: 'showDate', label: 'Date' },
               { key: 'showCount', label: 'Stop count' },
             ] as { key: keyof DayTabConfig; label: string }[]
