@@ -43,6 +43,7 @@ type Props = {
 
 export default function OverviewView({ days, scratchLists, dayOrder, initialView, onMoveActivity, onReorderDays, onSelectActivity, onSelectDay, onSelectList }: Props) {
   const [view, setView] = useState<'kanban' | 'map'>(initialView ?? 'kanban')
+  useEffect(() => { if (initialView) setView(initialView) }, [initialView])
   // activeKey for activity drag; activeDayId for day column drag
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const [activeDayId, setActiveDayId] = useState<string | null>(null)
