@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMapsLibrary } from '@vis.gl/react-google-maps'
-import type { POI } from '@/lib/types'
+import type { ActivityCategory, POI } from '@/lib/types'
+
+function typesToCategory(types: string[]): ActivityCategory | undefined {
+  if (types.some((t) => ['restaurant','food','bakery','cafe','meal_takeaway','meal_delivery','bar'].includes(t))) return 'food'
+  if (types.some((t) => t === 'lodging')) return 'hotel'
+  if (types.some((t) => ['transit_station','bus_station','train_station','subway_station','airport','ferry_terminal'].includes(t))) return 'transport'
+  if (types.some((t) => ['museum','tourist_attraction','point_of_interest','art_gallery','church','park','amusement_park','zoo','aquarium','stadium','natural_feature'].includes(t))) return 'sight'
+  return undefined
+}
 
 type Props = {
   onSelect: (poi: POI) => void
@@ -46,7 +54,7 @@ export default function PlacesAutocomplete({ onSelect, placeholder, className }:
       if (!placePrediction) return
       const place = placePrediction.toPlace()
       await place.fetchFields({
-        fields: ['id', 'displayName', 'location', 'formattedAddress', 'rating', 'photos', 'websiteURI'],
+        fields: ['id', 'displayName', 'location', 'formattedAddress', 'rating', 'photos', 'websiteURI', 'types'],
       })
 
       const location = place.location
@@ -58,6 +66,7 @@ export default function PlacesAutocomplete({ onSelect, placeholder, className }:
         lat: location.lat(),
         lng: location.lng(),
         address: place.formattedAddress ?? undefined,
+        category: typesToCategory(place.types ?? []),
         rating: place.rating ?? undefined,
         url: place.websiteURI ?? undefined,
         photoUrl: place.photos?.[0]?.getURI({ maxWidth: 400 }),

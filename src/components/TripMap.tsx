@@ -418,15 +418,15 @@ function TripMapInner({
       {/* ── POI bottom sheet ── */}
       {mapPOI && (
         <div className="absolute bottom-3 left-3 right-3 z-10 max-h-[70%] overflow-y-auto rounded-2xl bg-white shadow-2xl">
-          {mapPOI.photoUrl && (
-            <img src={mapPOI.photoUrl} alt={mapPOI.name} className="h-36 w-full rounded-t-2xl object-cover" />
-          )}
-          <div className="p-4">
-            {/* Header */}
+          <div className="p-3">
+            {/* Header: square thumbnail + info + close */}
             <div className="flex items-start gap-3">
+              {mapPOI.photoUrl && (
+                <img src={mapPOI.photoUrl} alt={mapPOI.name} className="h-16 w-16 flex-shrink-0 rounded-xl object-cover" />
+              )}
               <div className="min-w-0 flex-1">
-                <h3 className="font-semibold text-slate-800">{mapPOI.name}</h3>
-                {mapPOI.address && <p className="mt-0.5 text-xs text-slate-500">{mapPOI.address}</p>}
+                <h3 className="font-semibold leading-tight text-slate-800">{mapPOI.name}</h3>
+                {mapPOI.address && <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{mapPOI.address}</p>}
                 {mapPOI.rating != null && (
                   <div className="mt-1 flex items-center gap-1">
                     <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
