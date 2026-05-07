@@ -1,6 +1,6 @@
 import {
   collection, doc, addDoc, deleteDoc, updateDoc, setDoc, getDocs,
-  query, where, orderBy, onSnapshot, serverTimestamp, writeBatch,
+  query, where, orderBy, onSnapshot, serverTimestamp, writeBatch, deleteField,
 } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import type { Trip, Day, Activity, POI, ScratchList } from '@/lib/types'
@@ -90,11 +90,43 @@ export async function updateTrip(tripId: string, patch: Partial<Trip>) {
   })
 }
 
-export async function reorderDays(tripId: string, orderedIds: string[]) {
-  await updateDoc(doc(tripsCol, tripId), {
-    dayOrder: orderedIds,
+// Reorders day content (activities, title, notes) across the fixed date slots.
+// The date documents keep their existing IDs; the dragged content is written into
+// whichever date slot it now occupies in the sorted date sequence.
+// E.g. drag Day 5 (Mar 14) between Day 1 and Day 2:
+//   slot Mar 10 ← Day 1 content (unchanged)
+//   slot Mar 11 ← Day 5 content  ← moved here
+//   slot Mar 12 ← Day 2 content  ← shifted down
+//   slot Mar 13 ← Day 3 content
+//   slot Mar 14 ← Day 4 content
+export async function reassignDayDates(
+  tripId: string,
+  orderedDays: Day[],
+): Promise<void> {
+  // The fixed date slots in ascending order
+  const sortedDates = [...orderedDays].map((d) => d.date).sort()
+
+  const batch = writeBatch(db)
+
+  orderedDays.forEach((day, i) => {
+    const targetDate = sortedDates[i]
+    // Only write if something actually moved into this slot
+    if (day.id !== targetDate) {
+      batch.set(doc(daysCol(tripId), targetDate), stripUndefinedDeep({
+        date: targetDate,
+        title: day.title ?? '',
+        notes: day.notes ?? '',
+        activities: day.activities,
+      }), { merge: false })
+    }
+  })
+
+  batch.update(doc(tripsCol, tripId), {
+    dayOrder: deleteField(), // content is now in the correct date slots
     updatedAt: serverTimestamp(),
   })
+
+  await batch.commit()
 }
 
 export async function deleteTrip(tripId: string) {
@@ -158,6 +190,14 @@ export async function reorderActivities(tripId: string, day: Day, orderedIds: st
     })
     .filter((a): a is Activity => a !== null)
   await setDayActivities(tripId, day.id, activities)
+}
+
+export async function reorderListActivities(tripId: string, list: ScratchList, orderedIds: string[]) {
+  const map = new Map(list.activities.map((a) => [a.id, a]))
+  const activities = orderedIds
+    .map((id, i) => { const a = map.get(id); return a ? { ...a, order: i } : null })
+    .filter((a): a is Activity => a !== null)
+  await setDoc(doc(listsCol(tripId), list.id), { activities: stripUndefinedDeep(activities) }, { merge: true })
 }
 
 export async function moveActivityBetweenDays(

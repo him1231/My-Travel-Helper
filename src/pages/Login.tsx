@@ -1,6 +1,8 @@
 import { Navigate, useNavigate, useLocation } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { Compass } from 'lucide-react'
+import { signInAnonymously } from 'firebase/auth'
+import { auth } from '@/lib/firebase'
 import { useAuth } from '@/hooks/useAuth'
 
 export default function Login() {
@@ -21,6 +23,17 @@ export default function Login() {
     }
   }
 
+  const handleDevSignIn = async () => {
+    try {
+      await signInAnonymously(auth)
+      nav(from, { replace: true })
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      toast.error(`Dev login failed — enable Anonymous auth in Firebase console. ${msg}`)
+      console.error(e)
+    }
+  }
+
   return (
     <div className="grid h-screen place-items-center bg-gradient-to-br from-sky-50 to-emerald-50 px-4">
       <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-xl">
@@ -37,6 +50,14 @@ export default function Login() {
           <GoogleIcon />
           Continue with Google
         </button>
+        {import.meta.env.DEV && (
+          <button
+            onClick={handleDevSignIn}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 font-medium text-amber-800 hover:bg-amber-100"
+          >
+            🛠 Dev Login (local only)
+          </button>
+        )}
       </div>
     </div>
   )

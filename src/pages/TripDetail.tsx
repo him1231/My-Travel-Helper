@@ -22,7 +22,7 @@ import TripMap from '@/components/TripMap'
 import TimelineView from '@/components/TimelineView'
 import NearbyDrawer from '@/components/NearbyDrawer'
 import WeatherWidget from '@/components/WeatherWidget'
-import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, updateDayTitle, reorderActivities, reorderDays, updateActivity, removeActivity, moveActivityBetweenDays, subscribeScratchLists, addScratchList, renameScratchList, removeScratchList, addActivityToList, updateActivityInList, removeActivityFromList, moveBetweenDayAndList, moveFromListToDay, moveBetweenLists } from '@/lib/firestore/trips'
+import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, updateDayTitle, reorderActivities, reorderListActivities, reassignDayDates, updateActivity, removeActivity, moveActivityBetweenDays, subscribeScratchLists, addScratchList, renameScratchList, removeScratchList, addActivityToList, updateActivityInList, removeActivityFromList, moveBetweenDayAndList, moveFromListToDay, moveBetweenLists } from '@/lib/firestore/trips'
 import type { Trip, Day, Activity, POI, ScratchList } from '@/lib/types'
 import { todayISO, addDaysISO, formatDateISO, formatMoney, exportIcal } from '@/lib/utils'
 
@@ -127,6 +127,21 @@ export default function TripDetail() {
     () => days.find((d) => d.id === selectedDayId) ?? null,
     [days, selectedDayId],
   )
+
+  // Hotel banners: derive check-in/check-out activities from adjacent days
+  const { checkInActivity, checkOutActivity } = useMemo(() => {
+    if (!selectedDayId) return { checkInActivity: null, checkOutActivity: null }
+    const idx = days.findIndex((d) => d.id === selectedDayId)
+    const prevDay = idx > 0 ? days[idx - 1] : null
+    const checkIn = days[idx]?.activities.find(
+      (a) => a.poi?.category === 'hotel' && a.hotelCheckIn === selectedDayId,
+    ) ?? null
+    const checkOut = prevDay?.activities.find(
+      (a) => a.poi?.category === 'hotel' && a.hotelCheckIn === prevDay.id,
+    ) ?? null
+    return { checkInActivity: checkIn, checkOutActivity: checkOut }
+  }, [days, selectedDayId])
+
   const editingActivity = useMemo(() => {
     if (!editingActivityId) return null
     for (const d of days) {
@@ -680,8 +695,22 @@ export default function TripDetail() {
             dayOrder={trip.dayOrder}
             initialView={overviewInitialView}
             onMoveActivity={handleMoveActivity}
+            onReorderActivities={async (kind, containerId, orderedIds) => {
+              try {
+                if (kind === 'day') {
+                  const day = days.find((d) => d.id === containerId)
+                  if (day) await reorderActivities(tripId, day, orderedIds)
+                } else {
+                  const list = scratchLists.find((l) => l.id === containerId)
+                  if (list) await reorderListActivities(tripId, list, orderedIds)
+                }
+              } catch (e) { console.error(e); toast.error('Failed to reorder') }
+            }}
             onReorderDays={async (orderedIds) => {
-              try { await reorderDays(tripId, orderedIds) }
+              const dayMap = new Map(days.map((d) => [d.id, d]))
+              const orderedDays = orderedIds.map((id) => dayMap.get(id)).filter((d): d is Day => !!d)
+              if (orderedDays.length === 0) return
+              try { await reassignDayDates(tripId, orderedDays) }
               catch (e) { console.error(e); toast.error('Failed to reorder days') }
             }}
             onSelectActivity={(activityId, kind, containerId) => {
@@ -852,6 +881,9 @@ export default function TripDetail() {
                               ))}
                             </div>
                           )}
+                          {checkOutActivity && (
+                            <HotelBanner type="checkout" hotelName={checkOutActivity.title} />
+                          )}
                           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                             <SortableContext items={localActivities.map((a) => a.id)} strategy={verticalListSortingStrategy}>
                               <div className="space-y-2">
@@ -870,6 +902,9 @@ export default function TripDetail() {
                               </div>
                             </SortableContext>
                           </DndContext>
+                          {checkInActivity && (
+                            <HotelBanner type="checkin" hotelName={checkInActivity.title} />
+                          )}
                         </>
                       )}
                     </>
@@ -1032,6 +1067,18 @@ export default function TripDetail() {
               try { await reorderActivities(tripId, selectedDay, orderedIds) }
               catch (e) { console.error(e); toast.error('Optimize failed'); setLocalActivities(selectedDay.activities) }
             }}
+            onAddHotel={async (poi, dayId) => {
+              const day = days.find((d) => d.id === dayId)
+              if (!day || !tripId) return
+              const activity: Activity = {
+                id: nanoid(8), order: day.activities.length,
+                type: 'poi', title: poi.name,
+                poi: { ...poi, category: 'hotel' },
+                hotelCheckIn: dayId,
+              }
+              try { await addActivity(tripId, day, activity) }
+              catch (e) { console.error(e); toast.error('Failed to add hotel') }
+            }}
           />
         </section>
       </div>
@@ -1114,6 +1161,16 @@ export default function TripDetail() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function HotelBanner({ type, hotelName }: { type: 'checkin' | 'checkout'; hotelName: string }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-700">
+      <span className="text-base">🏨</span>
+      <span className="font-semibold">{type === 'checkin' ? 'Check in' : 'Check out'}:</span>
+      <span className="truncate">{hotelName}</span>
     </div>
   )
 }
