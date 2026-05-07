@@ -53,11 +53,15 @@ type Props = {
 export default function OverviewView({ days, scratchLists, dayOrder, initialView, onMoveActivity, onReorderActivities, onReorderDays, onSelectActivity, onSelectDay, onSelectList }: Props) {
   const [view, setView] = useState<'kanban' | 'map'>(initialView ?? 'kanban')
   useEffect(() => { if (initialView) setView(initialView) }, [initialView])
-  // activeKey for activity drag; activeDayId for day column drag
-  const [activeKey, setActiveKey] = useState<string | null>(null)
+  // activeActivityId for activity drag; activeDayId for day column drag
+  const [activeActivityId, setActiveActivityId] = useState<string | null>(null)
   const [activeDayId, setActiveDayId] = useState<string | null>(null)
   const isDraggingDay = useRef(false)
   const isDraggingActivity = useRef(false)
+  // Source container captured at drag start (active.id no longer encodes it,
+  // because we use a stable activity.id sortable id so dnd-kit can keep
+  // tracking the draggable across cross-column re-mounts during preview).
+  const sourceColRef = useRef<{ kind: 'day' | 'list'; id: string } | null>(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   // Apply custom order if provided, otherwise keep date order
@@ -112,11 +116,13 @@ export default function OverviewView({ days, scratchLists, dayOrder, initialView
   )
 
   const activeActivity = useMemo(() => {
-    if (!activeKey) return null
-    const [kind, containerId, activityId] = activeKey.split('::')
-    const list = localColumns.get(colKey(kind as 'day' | 'list', containerId))
-    return list?.find((a) => a.id === activityId) ?? null
-  }, [activeKey, localColumns])
+    if (!activeActivityId) return null
+    for (const list of localColumns.values()) {
+      const found = list.find((a) => a.id === activeActivityId)
+      if (found) return found
+    }
+    return null
+  }, [activeActivityId, localColumns])
 
   const activeDayData = useMemo(
     () => (activeDayId ? dayMap.get(activeDayId) ?? null : null),
@@ -128,10 +134,44 @@ export default function OverviewView({ days, scratchLists, dayOrder, initialView
     if (id.startsWith(DAY_COL_PREFIX)) {
       isDraggingDay.current = true
       setActiveDayId(id.slice(DAY_COL_PREFIX.length))
-    } else {
-      isDraggingActivity.current = true
-      setActiveKey(id)
+      return
     }
+    // Activity drag — id is just activity.id; locate its source column
+    const activityId = id
+    isDraggingActivity.current = true
+    setActiveActivityId(activityId)
+    let src: { kind: 'day' | 'list'; id: string } | null = null
+    for (const day of days) {
+      if (day.activities.some((a) => a.id === activityId)) { src = { kind: 'day', id: day.id }; break }
+    }
+    if (!src) {
+      for (const list of scratchLists) {
+        if (list.activities.some((a) => a.id === activityId)) { src = { kind: 'list', id: list.id }; break }
+      }
+    }
+    sourceColRef.current = src
+  }
+
+  // Resolve a drop target id into a destination column. The id is either
+  // a column droppable ("day::id"/"list::id") or a stable activity.id (no "::").
+  const resolveOver = (
+    overId: string,
+    cols: globalThis.Map<ColKey, Activity[]>,
+  ): { toKind: 'day' | 'list'; toId: string; overActivityId: string | null } | null => {
+    if (overId.startsWith(DAY_COL_PREFIX)) return null
+    if (overId.includes('::')) {
+      const [k, id] = overId.split('::')
+      if (k !== 'day' && k !== 'list') return null
+      return { toKind: k, toId: id, overActivityId: null }
+    }
+    // Activity id — find its current column
+    for (const [ck, list] of cols) {
+      if (list.some((a) => a.id === overId)) {
+        const [k, id] = ck.split('::')
+        return { toKind: k as 'day' | 'list', toId: id, overActivityId: overId }
+      }
+    }
+    return null
   }
 
   // Live preview: shift columns (day-col drag) or activity positions within/across columns
@@ -161,26 +201,14 @@ export default function OverviewView({ days, scratchLists, dayOrder, initialView
       return
     }
 
-    // Activity drag — live move within or between columns
-    const parts = dragId.split('::')
-    if (parts.length !== 3) return
-    const [,, activityId] = parts
+    // Activity drag — live move within or between columns.
+    // dragId is just the stable activity.id (no "::").
+    const activityId = dragId
     const overId = e.over.id as string
-    if (overId.startsWith(DAY_COL_PREFIX)) return
-
-    // over can be either a column droppable ("day::id" or "list::id")
-    // or another activity ("day::id::actId" or "list::id::actId")
-    const overParts = overId.split('::')
-    let toKind: string
-    let toId: string
-    let overActivityId: string | null = null
-    if (overParts.length === 3) {
-      ;[toKind, toId, overActivityId] = overParts
-    } else {
-      ;[toKind, toId] = overParts
-    }
-
-    const toCK = colKey(toKind as 'day' | 'list', toId)
+    const resolved = resolveOver(overId, localColumns)
+    if (!resolved) return
+    const { toKind, toId, overActivityId } = resolved
+    const toCK = colKey(toKind, toId)
 
     setLocalColumns((prev) => {
       // Find which column currently holds the dragged item (it may have already moved)
@@ -235,41 +263,38 @@ export default function OverviewView({ days, scratchLists, dayOrder, initialView
     }
 
     // Activity drag end — keep isDraggingActivity true until write completes
-    setActiveKey(null)
+    setActiveActivityId(null)
+    const source = sourceColRef.current
+    sourceColRef.current = null
 
-    if (!e.over) {
+    if (!e.over || !source) {
       isDraggingActivity.current = false
       setLocalColumns(serverColumns)
       return
     }
 
-    const parts = dragId.split('::')
-    if (parts.length !== 3) { isDraggingActivity.current = false; return }
-    const [fromKind, fromId, activityId] = parts
-
+    const activityId = dragId
     const overId = e.over.id as string
-    if (overId.startsWith(DAY_COL_PREFIX)) {
+    const resolved = resolveOver(overId, localColumns)
+    if (!resolved) {
       isDraggingActivity.current = false
       setLocalColumns(serverColumns)
       return
     }
+    const { toKind, toId } = resolved
 
-    const overParts = overId.split('::')
-    const toKind = overParts[0]
-    const toId = overParts[1]
-
-    const fromCK = colKey(fromKind as 'day' | 'list', fromId)
-    const toCK = colKey(toKind as 'day' | 'list', toId)
+    const fromCK = colKey(source.kind, source.id)
+    const toCK = colKey(toKind, toId)
     const finalToList = localColumns.get(toCK) ?? []
 
     try {
       if (fromCK === toCK) {
         // Within-column reorder
-        await onReorderActivities?.(fromKind as 'day' | 'list', fromId, finalToList.map((a) => a.id))
+        await onReorderActivities?.(source.kind, source.id, finalToList.map((a) => a.id))
       } else {
         // Cross-column move — optimistic state already applied in handleDragOver
         const toIndex = finalToList.findIndex((a) => a.id === activityId)
-        await onMoveActivity(activityId, fromKind as 'day' | 'list', fromId, toKind as 'day' | 'list', toId, toIndex)
+        await onMoveActivity(activityId, source.kind, source.id, toKind, toId, toIndex)
       }
     } catch (err) {
       console.error(err)
@@ -433,7 +458,7 @@ function DayColumnCard({
       </div>
       <div className="flex-1 overflow-y-auto p-2">
         <SortableContext
-          items={actList.map((a) => `day::${day.id}::${a.id}`)}
+          items={actList.map((a) => a.id)}
           strategy={verticalListSortingStrategy}
         >
           <div className="space-y-1.5">
@@ -441,8 +466,6 @@ function DayColumnCard({
               <SortableActivity
                 key={activity.id}
                 activity={activity}
-                kind="day"
-                containerId={day.id}
                 onSelect={() => onSelectActivity?.(activity.id, 'day', day.id)}
               />
             ))}
@@ -485,7 +508,7 @@ function ListColumn({
       </div>
       <div className="flex-1 overflow-y-auto p-2">
         <SortableContext
-          items={activities.map((a) => `list::${list.id}::${a.id}`)}
+          items={activities.map((a) => a.id)}
           strategy={verticalListSortingStrategy}
         >
           <div className="space-y-1.5">
@@ -493,8 +516,6 @@ function ListColumn({
               <SortableActivity
                 key={activity.id}
                 activity={activity}
-                kind="list"
-                containerId={list.id}
                 onSelect={() => onSelectActivity?.(activity.id, 'list', list.id)}
               />
             ))}
@@ -511,15 +532,15 @@ function ListColumn({
 }
 
 function SortableActivity({
-  activity, kind, containerId, onSelect,
+  activity, onSelect,
 }: {
   activity: Activity
-  kind: 'day' | 'list'
-  containerId: string
   onSelect: () => void
 }) {
+  // Use stable activity.id so dnd-kit can keep tracking the draggable
+  // when the live preview re-mounts it under a different column.
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: `${kind}::${containerId}::${activity.id}`,
+    id: activity.id,
   })
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
