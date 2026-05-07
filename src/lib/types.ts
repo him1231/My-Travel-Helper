@@ -71,6 +71,7 @@ export type Trip = {
   budgetLimit?: Money
 
   checklist: ChecklistItem[]
+  dayOrder?: string[] // custom kanban column order (day IDs); falls back to date sort
 
   createdAt: Timestamp | null
   updatedAt: Timestamp | null

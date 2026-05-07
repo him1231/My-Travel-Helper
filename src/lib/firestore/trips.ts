@@ -90,6 +90,13 @@ export async function updateTrip(tripId: string, patch: Partial<Trip>) {
   })
 }
 
+export async function reorderDays(tripId: string, orderedIds: string[]) {
+  await updateDoc(doc(tripsCol, tripId), {
+    dayOrder: orderedIds,
+    updatedAt: serverTimestamp(),
+  })
+}
+
 export async function deleteTrip(tripId: string) {
   const daysSnap = await getDocs(daysCol(tripId))
   const batch = writeBatch(db)

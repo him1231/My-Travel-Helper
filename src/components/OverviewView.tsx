@@ -4,8 +4,10 @@ import {
   useSensor, useSensors,
   type DragStartEvent, type DragEndEvent,
 } from '@dnd-kit/core'
+import { SortableContext, horizontalListSortingStrategy, arrayMove, useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { Map, Marker, useApiIsLoaded, useMap } from '@vis.gl/react-google-maps'
-import { LayoutGrid, Map as MapIcon } from 'lucide-react'
+import { GripVertical, LayoutGrid, Map as MapIcon } from 'lucide-react'
 import type { Activity, Day, ScratchList } from '@/lib/types'
 import { formatDateISO } from '@/lib/utils'
 import { useMapsAuthFailed } from '@/lib/mapsStatus'
@@ -20,23 +22,52 @@ function makePinSvg(color: string, label: string): string {
   )}`
 }
 
+// Drag ID prefixes to distinguish day-column drags from activity drags
+const DAY_COL_PREFIX = 'daycol::'
+
 type Props = {
   days: Day[]
   scratchLists: ScratchList[]
+  dayOrder?: string[] // custom column order (day IDs)
   onMoveActivity: (
     activityId: string,
     fromKind: 'day' | 'list', fromId: string,
     toKind: 'day' | 'list', toId: string,
   ) => Promise<void>
+  onReorderDays?: (orderedIds: string[]) => Promise<void>
   onSelectActivity?: (activityId: string, kind: 'day' | 'list', containerId: string) => void
   onSelectDay?: (dayId: string) => void
   onSelectList?: (listId: string) => void
 }
 
-export default function OverviewView({ days, scratchLists, onMoveActivity, onSelectActivity, onSelectDay, onSelectList }: Props) {
+export default function OverviewView({ days, scratchLists, dayOrder, onMoveActivity, onReorderDays, onSelectActivity, onSelectDay, onSelectList }: Props) {
   const [view, setView] = useState<'kanban' | 'map'>('kanban')
+  // activeKey for activity drag; activeDayId for day column drag
   const [activeKey, setActiveKey] = useState<string | null>(null)
+  const [activeDayId, setActiveDayId] = useState<string | null>(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+
+  // Apply custom order if provided, otherwise keep date order
+  const orderedDays = useMemo(() => {
+    if (!dayOrder || dayOrder.length === 0) return days
+    const dayMap = new globalThis.Map(days.map((d) => [d.id, d]))
+    const sorted = dayOrder.map((id) => dayMap.get(id)).filter((d): d is Day => !!d)
+    // append any days not in dayOrder (e.g. newly added)
+    const inOrder = new globalThis.Set(dayOrder)
+    days.forEach((d) => { if (!inOrder.has(d.id)) sorted.push(d) })
+    return sorted
+  }, [days, dayOrder])
+
+  // Local optimistic state for column order
+  const [localDayIds, setLocalDayIds] = useState<string[]>(() => orderedDays.map((d) => d.id))
+  useEffect(() => {
+    setLocalDayIds(orderedDays.map((d) => d.id))
+  }, [orderedDays])
+
+  const localOrderedDays = useMemo(() => {
+    const dayMap = new globalThis.Map(days.map((d) => [d.id, d]))
+    return localDayIds.map((id) => dayMap.get(id)).filter((d): d is Day => !!d)
+  }, [localDayIds, days])
 
   const activeActivity = useMemo(() => {
     if (!activeKey) return null
@@ -47,13 +78,52 @@ export default function OverviewView({ days, scratchLists, onMoveActivity, onSel
     return container?.activities.find((a) => a.id === activityId) ?? null
   }, [activeKey, days, scratchLists])
 
-  const handleDragStart = (e: DragStartEvent) => setActiveKey(e.active.id as string)
+  const activeDayData = useMemo(
+    () => (activeDayId ? days.find((d) => d.id === activeDayId) ?? null : null),
+    [activeDayId, days],
+  )
+
+  const handleDragStart = (e: DragStartEvent) => {
+    const id = e.active.id as string
+    if (id.startsWith(DAY_COL_PREFIX)) {
+      setActiveDayId(id.slice(DAY_COL_PREFIX.length))
+    } else {
+      setActiveKey(id)
+    }
+  }
 
   const handleDragEnd = async (e: DragEndEvent) => {
+    const dragId = e.active.id as string
+
+    // Day column reorder
+    if (dragId.startsWith(DAY_COL_PREFIX)) {
+      setActiveDayId(null)
+      if (!e.over) return
+      const fromId = dragId.slice(DAY_COL_PREFIX.length)
+      const toId = (e.over.id as string).slice(DAY_COL_PREFIX.length)
+      if (fromId === toId) return
+      const oldIdx = localDayIds.indexOf(fromId)
+      const newIdx = localDayIds.indexOf(toId)
+      if (oldIdx === -1 || newIdx === -1) return
+      const reordered = arrayMove(localDayIds, oldIdx, newIdx)
+      setLocalDayIds(reordered) // optimistic
+      try {
+        await onReorderDays?.(reordered)
+      } catch (err) {
+        console.error(err)
+        setLocalDayIds(orderedDays.map((d) => d.id)) // rollback
+      }
+      return
+    }
+
+    // Activity cross-column move
     setActiveKey(null)
     if (!e.over || !e.active) return
-    const [fromKind, fromId, activityId] = (e.active.id as string).split('::')
-    const [toKind, toId] = (e.over.id as string).split('::')
+    const [fromKind, fromId, activityId] = dragId.split('::')
+    const overId = e.over.id as string
+    // ignore if dropped onto a day-column sortable handle area
+    if (overId.startsWith(DAY_COL_PREFIX)) return
+    const [toKind, toId] = overId.split('::')
     if (fromKind === toKind && fromId === toId) return
     await onMoveActivity(activityId, fromKind as 'day' | 'list', fromId, toKind as 'day' | 'list', toId)
   }
@@ -85,9 +155,21 @@ export default function OverviewView({ days, scratchLists, onMoveActivity, onSel
           {/* outer scrolls; inner is centered when content fits */}
           <div className="flex flex-1 overflow-x-auto">
             <div className="mx-auto flex min-w-min gap-3 p-4">
-              {days.map((day, dayIdx) => (
-                <DayColumn key={day.id} day={day} dayIdx={dayIdx} onSelectActivity={onSelectActivity} onSelectDay={onSelectDay} />
-              ))}
+              <SortableContext
+                items={localDayIds.map((id) => `${DAY_COL_PREFIX}${id}`)}
+                strategy={horizontalListSortingStrategy}
+              >
+                {localOrderedDays.map((day, dayIdx) => (
+                  <SortableDayColumn
+                    key={day.id}
+                    day={day}
+                    dayIdx={dayIdx}
+                    isDragging={activeDayId === day.id}
+                    onSelectActivity={onSelectActivity}
+                    onSelectDay={onSelectDay}
+                  />
+                ))}
+              </SortableContext>
               {scratchLists.map((list) => (
                 <ListColumn key={list.id} list={list} onSelectActivity={onSelectActivity} onSelectList={onSelectList} />
               ))}
@@ -99,7 +181,10 @@ export default function OverviewView({ days, scratchLists, onMoveActivity, onSel
             </div>
           </div>
           <DragOverlay dropAnimation={null}>
-            {activeActivity && <ActivityChip activity={activeActivity} ghost />}
+            {activeDayData && (
+              <DayColumnCard day={activeDayData} dayIdx={localDayIds.indexOf(activeDayData.id)} ghost />
+            )}
+            {activeActivity && !activeDayData && <ActivityChip activity={activeActivity} ghost />}
           </DragOverlay>
         </DndContext>
       )}
@@ -107,11 +192,43 @@ export default function OverviewView({ days, scratchLists, onMoveActivity, onSel
   )
 }
 
-function DayColumn({
-  day, dayIdx, onSelectActivity, onSelectDay,
+function SortableDayColumn({
+  day, dayIdx, isDragging, onSelectActivity, onSelectDay,
 }: {
   day: Day
   dayIdx: number
+  isDragging?: boolean
+  onSelectActivity?: (activityId: string, kind: 'day' | 'list', containerId: string) => void
+  onSelectDay?: (dayId: string) => void
+}) {
+  const { setNodeRef, attributes, listeners, transform, transition } = useSortable({
+    id: `${DAY_COL_PREFIX}${day.id}`,
+  })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
+  return (
+    <div ref={setNodeRef} style={style}>
+      <DayColumnCard
+        day={day}
+        dayIdx={dayIdx}
+        dragHandleProps={{ ...attributes, ...listeners }}
+        onSelectActivity={onSelectActivity}
+        onSelectDay={onSelectDay}
+      />
+    </div>
+  )
+}
+
+function DayColumnCard({
+  day, dayIdx, ghost, dragHandleProps, onSelectActivity, onSelectDay,
+}: {
+  day: Day
+  dayIdx: number
+  ghost?: boolean
+  dragHandleProps?: React.HTMLAttributes<HTMLElement>
   onSelectActivity?: (activityId: string, kind: 'day' | 'list', containerId: string) => void
   onSelectDay?: (dayId: string) => void
 }) {
@@ -120,20 +237,37 @@ function DayColumn({
   return (
     <div
       ref={setNodeRef}
-      className={`flex w-56 flex-shrink-0 flex-col rounded-xl border transition-colors ${isOver ? 'border-sky-400 bg-sky-50' : 'border-slate-200 bg-white'}`}
+      className={`flex w-56 flex-shrink-0 flex-col rounded-xl border transition-colors ${
+        ghost ? 'rotate-2 shadow-2xl border-sky-300 bg-sky-50' : isOver ? 'border-sky-400 bg-sky-50' : 'border-slate-200 bg-white'
+      }`}
     >
       <div
-        className={`rounded-t-xl border-b border-slate-100 px-3 py-2.5 ${onSelectDay ? 'cursor-pointer hover:bg-slate-50' : ''}`}
+        className="rounded-t-xl border-b border-slate-100"
         style={{ borderTop: `3px solid ${color}` }}
-        onClick={onSelectDay ? () => onSelectDay(day.id) : undefined}
-        title={onSelectDay ? 'Open day detail' : undefined}
       >
-        {day.title && <div className="truncate text-[11px] font-bold text-slate-700">{day.title}</div>}
-        <div className="text-xs font-semibold text-slate-800">{formatDateISO(day.date)}</div>
-        <div className="text-[10px] text-slate-400">{day.activities.length} stop{day.activities.length !== 1 ? 's' : ''}</div>
-        {day.notes && (
-          <div className="mt-0.5 line-clamp-2 text-[10px] italic text-slate-400">{day.notes}</div>
-        )}
+        {/* Drag handle row */}
+        <div className="flex items-center gap-1 px-2 pt-2">
+          <button
+            {...dragHandleProps}
+            className="cursor-grab touch-none rounded p-0.5 text-slate-300 hover:text-slate-500 active:cursor-grabbing focus:outline-none"
+            title="Drag to reorder day"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GripVertical className="h-3.5 w-3.5" />
+          </button>
+          <div
+            className={`flex-1 min-w-0 pb-1 ${onSelectDay ? 'cursor-pointer hover:opacity-80' : ''}`}
+            onClick={onSelectDay ? () => onSelectDay(day.id) : undefined}
+            title={onSelectDay ? 'Open day detail' : undefined}
+          >
+            {day.title && <div className="truncate text-[11px] font-bold text-slate-700">{day.title}</div>}
+            <div className="text-xs font-semibold text-slate-800">{formatDateISO(day.date)}</div>
+            <div className="text-[10px] text-slate-400">{day.activities.length} stop{day.activities.length !== 1 ? 's' : ''}</div>
+            {day.notes && (
+              <div className="mt-0.5 line-clamp-2 text-[10px] italic text-slate-400">{day.notes}</div>
+            )}
+          </div>
+        </div>
       </div>
       <div className="flex-1 space-y-1.5 overflow-y-auto p-2">
         {day.activities.map((activity) => (

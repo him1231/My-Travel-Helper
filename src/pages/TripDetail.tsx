@@ -22,7 +22,7 @@ import TripMap from '@/components/TripMap'
 import TimelineView from '@/components/TimelineView'
 import NearbyDrawer from '@/components/NearbyDrawer'
 import WeatherWidget from '@/components/WeatherWidget'
-import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, updateDayTitle, reorderActivities, updateActivity, removeActivity, moveActivityBetweenDays, subscribeScratchLists, addScratchList, renameScratchList, removeScratchList, addActivityToList, updateActivityInList, removeActivityFromList, moveBetweenDayAndList, moveFromListToDay, moveBetweenLists } from '@/lib/firestore/trips'
+import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, updateDayTitle, reorderActivities, reorderDays, updateActivity, removeActivity, moveActivityBetweenDays, subscribeScratchLists, addScratchList, renameScratchList, removeScratchList, addActivityToList, updateActivityInList, removeActivityFromList, moveBetweenDayAndList, moveFromListToDay, moveBetweenLists } from '@/lib/firestore/trips'
 import type { Trip, Day, Activity, POI, ScratchList } from '@/lib/types'
 import { todayISO, addDaysISO, formatDateISO, formatMoney, exportIcal } from '@/lib/utils'
 
@@ -671,7 +671,12 @@ export default function TripDetail() {
           <OverviewView
             days={days}
             scratchLists={scratchLists}
+            dayOrder={trip.dayOrder}
             onMoveActivity={handleMoveActivity}
+            onReorderDays={async (orderedIds) => {
+              try { await reorderDays(tripId, orderedIds) }
+              catch (e) { console.error(e); toast.error('Failed to reorder days') }
+            }}
             onSelectActivity={(activityId, kind, containerId) => {
               if (kind === 'day') { setSelectedDayId(containerId); setActiveTabKind('day') }
               else { setSelectedListId(containerId); setActiveTabKind('list') }
