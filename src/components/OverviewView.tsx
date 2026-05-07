@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable,
   useSensor, useSensors,
-  type DragStartEvent, type DragEndEvent,
+  type DragStartEvent, type DragOverEvent, type DragEndEvent,
 } from '@dnd-kit/core'
 import { SortableContext, horizontalListSortingStrategy, arrayMove, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -46,29 +46,35 @@ export default function OverviewView({ days, scratchLists, dayOrder, initialView
   // activeKey for activity drag; activeDayId for day column drag
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const [activeDayId, setActiveDayId] = useState<string | null>(null)
+  const isDraggingDay = useRef(false)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   // Apply custom order if provided, otherwise keep date order
-  const orderedDays = useMemo(() => {
-    if (!dayOrder || dayOrder.length === 0) return days
+  const serverDayIds = useMemo(() => {
+    if (!dayOrder || dayOrder.length === 0) {
+      return days.map((d) => d.id)
+    }
     const dayMap = new globalThis.Map(days.map((d) => [d.id, d]))
-    const sorted = dayOrder.map((id) => dayMap.get(id)).filter((d): d is Day => !!d)
-    // append any days not in dayOrder (e.g. newly added)
+    const sorted = dayOrder.map((id) => dayMap.get(id)).filter((d): d is Day => !!d).map((d) => d.id)
     const inOrder = new globalThis.Set(dayOrder)
-    days.forEach((d) => { if (!inOrder.has(d.id)) sorted.push(d) })
+    days.forEach((d) => { if (!inOrder.has(d.id)) sorted.push(d.id) })
     return sorted
   }, [days, dayOrder])
 
-  // Local optimistic state for column order
-  const [localDayIds, setLocalDayIds] = useState<string[]>(() => orderedDays.map((d) => d.id))
+  // Local order for live drag preview — only sync from server when not dragging
+  const [localDayIds, setLocalDayIds] = useState<string[]>(serverDayIds)
   useEffect(() => {
-    setLocalDayIds(orderedDays.map((d) => d.id))
-  }, [orderedDays])
+    if (!isDraggingDay.current) {
+      setLocalDayIds(serverDayIds)
+    }
+  }, [serverDayIds])
 
-  const localOrderedDays = useMemo(() => {
-    const dayMap = new globalThis.Map(days.map((d) => [d.id, d]))
-    return localDayIds.map((id) => dayMap.get(id)).filter((d): d is Day => !!d)
-  }, [localDayIds, days])
+  const dayMap = useMemo(() => new globalThis.Map(days.map((d) => [d.id, d])), [days])
+
+  const localOrderedDays = useMemo(
+    () => localDayIds.map((id) => dayMap.get(id)).filter((d): d is Day => !!d),
+    [localDayIds, dayMap],
+  )
 
   const activeActivity = useMemo(() => {
     if (!activeKey) return null
@@ -80,39 +86,52 @@ export default function OverviewView({ days, scratchLists, dayOrder, initialView
   }, [activeKey, days, scratchLists])
 
   const activeDayData = useMemo(
-    () => (activeDayId ? days.find((d) => d.id === activeDayId) ?? null : null),
-    [activeDayId, days],
+    () => (activeDayId ? dayMap.get(activeDayId) ?? null : null),
+    [activeDayId, dayMap],
   )
 
   const handleDragStart = (e: DragStartEvent) => {
     const id = e.active.id as string
     if (id.startsWith(DAY_COL_PREFIX)) {
+      isDraggingDay.current = true
       setActiveDayId(id.slice(DAY_COL_PREFIX.length))
     } else {
       setActiveKey(id)
     }
   }
 
+  // Live preview: shift columns as user drags over them
+  const handleDragOver = (e: DragOverEvent) => {
+    const dragId = e.active.id as string
+    if (!dragId.startsWith(DAY_COL_PREFIX)) return
+    if (!e.over) return
+    const overId = e.over.id as string
+    if (!overId.startsWith(DAY_COL_PREFIX)) return
+    const fromId = dragId.slice(DAY_COL_PREFIX.length)
+    const toId = overId.slice(DAY_COL_PREFIX.length)
+    if (fromId === toId) return
+    setLocalDayIds((ids) => {
+      const oldIdx = ids.indexOf(fromId)
+      const newIdx = ids.indexOf(toId)
+      if (oldIdx === -1 || newIdx === -1) return ids
+      return arrayMove(ids, oldIdx, newIdx)
+    })
+  }
+
   const handleDragEnd = async (e: DragEndEvent) => {
     const dragId = e.active.id as string
 
-    // Day column reorder
+    // Day column reorder — localDayIds is already in final order from handleDragOver
     if (dragId.startsWith(DAY_COL_PREFIX)) {
+      isDraggingDay.current = false
       setActiveDayId(null)
-      if (!e.over) return
-      const fromId = dragId.slice(DAY_COL_PREFIX.length)
-      const toId = (e.over.id as string).slice(DAY_COL_PREFIX.length)
-      if (fromId === toId) return
-      const oldIdx = localDayIds.indexOf(fromId)
-      const newIdx = localDayIds.indexOf(toId)
-      if (oldIdx === -1 || newIdx === -1) return
-      const reordered = arrayMove(localDayIds, oldIdx, newIdx)
-      setLocalDayIds(reordered) // optimistic
+      // localDayIds holds the final desired order; persist it
+      const finalIds = localDayIds.slice()
       try {
-        await onReorderDays?.(reordered)
+        await onReorderDays?.(finalIds)
       } catch (err) {
         console.error(err)
-        setLocalDayIds(orderedDays.map((d) => d.id)) // rollback
+        setLocalDayIds(serverDayIds) // rollback
       }
       return
     }
@@ -122,7 +141,6 @@ export default function OverviewView({ days, scratchLists, dayOrder, initialView
     if (!e.over || !e.active) return
     const [fromKind, fromId, activityId] = dragId.split('::')
     const overId = e.over.id as string
-    // ignore if dropped onto a day-column sortable handle area
     if (overId.startsWith(DAY_COL_PREFIX)) return
     const [toKind, toId] = overId.split('::')
     if (fromKind === toKind && fromId === toId) return
@@ -152,7 +170,7 @@ export default function OverviewView({ days, scratchLists, dayOrder, initialView
           <OverviewMap days={days} scratchLists={scratchLists} />
         </div>
       ) : (
-        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
           {/* outer scrolls; inner is centered when content fits */}
           <div className="flex flex-1 overflow-x-auto">
             <div className="mx-auto flex min-w-min gap-3 p-4">
