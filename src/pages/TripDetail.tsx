@@ -82,7 +82,7 @@ export default function TripDetail() {
   const [budgetOpen, setBudgetOpen] = useState(true)
   const [checklistOpen, setChecklistOpen] = useState(true)
   const [showOverview, setShowOverview] = useState(false)
-  const [fullMapView, setFullMapView] = useState(false)
+  const [overviewInitialView, setOverviewInitialView] = useState<'kanban' | 'map'>('kanban')
   const fetchingRoutesRef = useRef<Set<string>>(new Set())
   const [scratchLists, setScratchLists] = useState<ScratchList[]>([])
   const [activeTabKind, setActiveTabKind] = useState<'day' | 'list'>('day')
@@ -534,16 +534,22 @@ export default function TripDetail() {
           {/* Actions + user */}
           <div className="flex flex-shrink-0 items-center gap-0.5">
             <button
-              onClick={() => { setShowOverview((v) => !v); setFullMapView(false) }}
+              onClick={() => {
+                setOverviewInitialView('kanban')
+                setShowOverview((v) => !v)
+              }}
               title={showOverview ? 'Day view' : 'Trip overview'}
               className={`rounded p-1.5 transition ${showOverview ? 'text-sky-500 hover:bg-sky-50' : 'text-slate-400 hover:bg-slate-100'}`}
             >
               <LayoutGrid className="h-4 w-4" />
             </button>
             <button
-              onClick={() => { setFullMapView((v) => !v); setShowOverview(false) }}
-              title={fullMapView ? 'Show list + map' : 'Full map view'}
-              className={`rounded p-1.5 transition ${fullMapView ? 'text-sky-500 hover:bg-sky-50' : 'text-slate-400 hover:bg-slate-100'}`}
+              onClick={() => {
+                setOverviewInitialView('map')
+                setShowOverview(true)
+              }}
+              title="Trip map overview"
+              className={`rounded p-1.5 transition ${showOverview && overviewInitialView === 'map' ? 'text-sky-500 hover:bg-sky-50' : 'text-slate-400 hover:bg-slate-100'}`}
             >
               <MapIcon className="h-4 w-4" />
             </button>
@@ -613,7 +619,7 @@ export default function TripDetail() {
         </div>
       </div>
 
-      {!showOverview && !fullMapView && (
+      {!showOverview && (
       <div className="border-b border-slate-200 bg-white">
         <div className="px-4">
           {/* Day tabs row — full width */}
@@ -672,6 +678,7 @@ export default function TripDetail() {
             days={days}
             scratchLists={scratchLists}
             dayOrder={trip.dayOrder}
+            initialView={overviewInitialView}
             onMoveActivity={handleMoveActivity}
             onReorderDays={async (orderedIds) => {
               try { await reorderDays(tripId, orderedIds) }
@@ -688,8 +695,8 @@ export default function TripDetail() {
         </div>
       ) : null}
 
-      <div className={`grid flex-1 grid-cols-1 overflow-hidden ${fullMapView ? '' : 'md:grid-cols-[minmax(360px,40%)_1fr]'} ${showOverview ? 'hidden' : ''}`}>
-        <aside className={`print-area overflow-y-auto border-r border-slate-200 bg-slate-50 p-4 ${fullMapView ? 'hidden' : (mobileTab === 'list' ? 'block' : 'hidden md:block')}`}>
+      <div className={`grid flex-1 grid-cols-1 overflow-hidden md:grid-cols-[minmax(360px,40%)_1fr] ${showOverview ? 'hidden' : ''}`}>
+        <aside className={`print-area overflow-y-auto border-r border-slate-200 bg-slate-50 p-4 ${mobileTab === 'list' ? 'block' : 'hidden md:block'}`}>
           {activeTabKind === 'list' && selectedList ? (
             <div>
               <div className="mb-3 flex items-center gap-2">
@@ -996,7 +1003,7 @@ export default function TripDetail() {
           )}
         </aside>
 
-        <section className={`relative ${fullMapView ? 'block' : (mobileTab === 'map' ? 'block' : 'hidden md:block')}`}>
+        <section className={`relative ${mobileTab === 'map' ? 'block' : 'hidden md:block'}`}>
           {/* Search overlay on map */}
           <div className="absolute left-1/2 top-3 z-10 w-full max-w-sm -translate-x-1/2 px-3">
             <div className="rounded-xl shadow-lg">

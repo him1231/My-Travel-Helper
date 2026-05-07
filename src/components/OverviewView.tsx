@@ -29,6 +29,7 @@ type Props = {
   days: Day[]
   scratchLists: ScratchList[]
   dayOrder?: string[] // custom column order (day IDs)
+  initialView?: 'kanban' | 'map'
   onMoveActivity: (
     activityId: string,
     fromKind: 'day' | 'list', fromId: string,
@@ -40,8 +41,8 @@ type Props = {
   onSelectList?: (listId: string) => void
 }
 
-export default function OverviewView({ days, scratchLists, dayOrder, onMoveActivity, onReorderDays, onSelectActivity, onSelectDay, onSelectList }: Props) {
-  const [view, setView] = useState<'kanban' | 'map'>('kanban')
+export default function OverviewView({ days, scratchLists, dayOrder, initialView, onMoveActivity, onReorderDays, onSelectActivity, onSelectDay, onSelectList }: Props) {
+  const [view, setView] = useState<'kanban' | 'map'>(initialView ?? 'kanban')
   // activeKey for activity drag; activeDayId for day column drag
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const [activeDayId, setActiveDayId] = useState<string | null>(null)
@@ -378,12 +379,25 @@ function ActivityChip({ activity, ghost }: { activity: Activity; ghost?: boolean
 function OverviewMap({ days, scratchLists }: { days: Day[]; scratchLists: ScratchList[] }) {
   const apiLoaded = useApiIsLoaded()
   const authFailed = useMapsAuthFailed()
-  const allPoints = useMemo(() => {
+
+  // visibility: key = day.id or list.id, value = visible (default true)
+  const [hidden, setHidden] = useState<globalThis.Set<string>>(new globalThis.Set())
+
+  const toggle = (id: string) => {
+    setHidden((prev) => {
+      const next = new globalThis.Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const visiblePoints = useMemo(() => {
     const pts: { lat: number; lng: number }[] = []
-    days.forEach((d) => d.activities.forEach((a) => { if (a.poi) pts.push({ lat: a.poi.lat, lng: a.poi.lng }) }))
-    scratchLists.forEach((l) => l.activities.forEach((a) => { if (a.poi) pts.push({ lat: a.poi.lat, lng: a.poi.lng }) }))
+    days.forEach((d) => { if (!hidden.has(d.id)) d.activities.forEach((a) => { if (a.poi) pts.push({ lat: a.poi.lat, lng: a.poi.lng }) }) })
+    scratchLists.forEach((l) => { if (!hidden.has(l.id)) l.activities.forEach((a) => { if (a.poi) pts.push({ lat: a.poi.lat, lng: a.poi.lng }) }) })
     return pts
-  }, [days, scratchLists])
+  }, [days, scratchLists, hidden])
 
   if (authFailed) {
     return (
@@ -404,22 +418,51 @@ function OverviewMap({ days, scratchLists }: { days: Day[]; scratchLists: Scratc
   return (
     <MapErrorBoundary>
     <Map defaultCenter={{ lat: 20, lng: 0 }} defaultZoom={2} gestureHandling="greedy" style={{ width: '100%', height: '100%' }}>
-      <FitAllPoints points={allPoints} />
-      <OverviewMarkers days={days} scratchLists={scratchLists} />
+      <FitAllPoints points={visiblePoints} />
+      <OverviewMarkers days={days} scratchLists={scratchLists} hidden={hidden} />
       {(days.length > 0 || scratchLists.length > 0) && (
-        <div className="absolute bottom-8 left-2 z-10 max-h-52 overflow-y-auto rounded-lg bg-white/90 p-2 shadow-lg backdrop-blur-sm">
-          {days.map((day, i) => (
-            <div key={day.id} className="flex items-center gap-1.5 py-0.5">
-              <span className="inline-block h-3 w-3 flex-shrink-0 rounded-full" style={{ backgroundColor: DAY_COLORS[i % DAY_COLORS.length] }} />
-              <span className="text-[11px] text-slate-700">{formatDateISO(day.date)}</span>
-            </div>
-          ))}
-          {scratchLists.map((list) => (
-            <div key={list.id} className="flex items-center gap-1.5 py-0.5">
-              <span className="inline-block h-3 w-3 flex-shrink-0 rounded-full" style={{ backgroundColor: LIST_COLOR }} />
-              <span className="text-[11px] text-slate-500">📋 {list.name}</span>
-            </div>
-          ))}
+        <div className="absolute bottom-8 left-2 z-10 max-h-64 overflow-y-auto rounded-lg bg-white/95 p-2 shadow-lg backdrop-blur-sm">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Show on map</p>
+          {days.map((day, i) => {
+            const visible = !hidden.has(day.id)
+            const color = DAY_COLORS[i % DAY_COLORS.length]
+            return (
+              <label key={day.id} className="flex cursor-pointer items-center gap-1.5 rounded px-1 py-0.5 hover:bg-slate-50">
+                <input
+                  type="checkbox"
+                  checked={visible}
+                  onChange={() => toggle(day.id)}
+                  className="h-3 w-3 flex-shrink-0 rounded"
+                  style={{ accentColor: color }}
+                />
+                <span className="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                <span className={`text-[11px] ${visible ? 'text-slate-700' : 'text-slate-400 line-through'}`}>
+                  {day.title ? `${day.title} · ` : ''}{formatDateISO(day.date)}
+                </span>
+              </label>
+            )
+          })}
+          {scratchLists.length > 0 && days.length > 0 && (
+            <div className="my-1 border-t border-slate-100" />
+          )}
+          {scratchLists.map((list) => {
+            const visible = !hidden.has(list.id)
+            return (
+              <label key={list.id} className="flex cursor-pointer items-center gap-1.5 rounded px-1 py-0.5 hover:bg-slate-50">
+                <input
+                  type="checkbox"
+                  checked={visible}
+                  onChange={() => toggle(list.id)}
+                  className="h-3 w-3 flex-shrink-0 rounded"
+                  style={{ accentColor: LIST_COLOR }}
+                />
+                <span className="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ backgroundColor: LIST_COLOR }} />
+                <span className={`text-[11px] ${visible ? 'text-slate-500' : 'text-slate-300 line-through'}`}>
+                  📋 {list.name}
+                </span>
+              </label>
+            )
+          })}
         </div>
       )}
     </Map>
@@ -427,12 +470,13 @@ function OverviewMap({ days, scratchLists }: { days: Day[]; scratchLists: Scratc
   )
 }
 
-function OverviewMarkers({ days, scratchLists }: { days: Day[]; scratchLists: ScratchList[] }) {
+function OverviewMarkers({ days, scratchLists, hidden }: { days: Day[]; scratchLists: ScratchList[]; hidden: globalThis.Set<string> }) {
   const map = useMap()
   if (!map) return null
   return (
     <>
       {days.map((day, dayIdx) => {
+        if (hidden.has(day.id)) return null
         const color = DAY_COLORS[dayIdx % DAY_COLORS.length]
         return day.activities.map((activity, actIdx) =>
           activity.poi ? (
@@ -449,8 +493,9 @@ function OverviewMarkers({ days, scratchLists }: { days: Day[]; scratchLists: Sc
           ) : null
         )
       })}
-      {scratchLists.map((list) =>
-        list.activities.map((activity, actIdx) =>
+      {scratchLists.map((list) => {
+        if (hidden.has(list.id)) return null
+        return list.activities.map((activity, actIdx) =>
           activity.poi ? (
             <Marker
               key={`${list.id}-${activity.id}`}
@@ -464,7 +509,7 @@ function OverviewMarkers({ days, scratchLists }: { days: Day[]; scratchLists: Sc
             />
           ) : null
         )
-      )}
+      })}
     </>
   )
 }
