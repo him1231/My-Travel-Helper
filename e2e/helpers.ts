@@ -1,4 +1,4 @@
-import { type Page, expect } from '@playwright/test'
+import { type Page } from '@playwright/test'
 
 /** Click the dev login button and wait for the trips list page */
 export async function devLogin(page: Page) {

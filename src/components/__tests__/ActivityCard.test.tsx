@@ -93,11 +93,8 @@ describe('ActivityCard', () => {
   it('calls onSelect when clicked', async () => {
     const onSelect = vi.fn()
     render(<ActivityCard activity={makeActivity()} index={0} onSelect={onSelect} />)
-    screen.getByText('Test Activity').closest('div[class*="cursor"]')?.click()
-    // click fires on the card wrapper
-    const card = screen.getByText('Test Activity').closest('div[class*="rounded"]')
+    const card = screen.getByText('Test Activity').closest('div[class*="rounded"]') as HTMLElement | null
     card?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    // onSelect will have been called at least once due to bubbling
     expect(onSelect).toHaveBeenCalled()
   })
 
