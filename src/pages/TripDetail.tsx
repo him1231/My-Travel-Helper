@@ -531,7 +531,7 @@ export default function TripDetail() {
   }
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-screen flex-col pb-14 md:pb-0">
       {/* Combined app + trip header */}
       <div className="border-b border-slate-200 bg-white print:hidden">
         <div className="mx-auto flex max-w-7xl items-center gap-2 px-4 py-2.5">
