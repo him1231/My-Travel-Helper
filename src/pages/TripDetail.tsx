@@ -1044,7 +1044,7 @@ export default function TripDetail() {
 
         <section className={`relative ${mobileTab === 'map' ? 'block' : 'hidden md:block'}`}>
           {/* Search overlay on map */}
-          <div className="absolute left-1/2 top-3 z-10 w-full max-w-sm -translate-x-1/2 px-3">
+          <div className="absolute left-1/2 top-3 z-20 w-full max-w-sm -translate-x-1/2 px-3">
             <div className="rounded-xl shadow-lg">
               <PlacesAutocomplete onSelect={handleAddPOI} placeholder="Search to add a stop…" />
             </div>
