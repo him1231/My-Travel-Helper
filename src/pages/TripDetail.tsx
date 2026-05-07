@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { nanoid } from 'nanoid'
-import { ChevronDown, ChevronLeft, Calendar, Cloud, Compass, LayoutGrid, LayoutList, Link2, LogOut, Map as MapIcon, MapPin, Plus, Printer, StickyNote, Clock, UserPlus, X } from 'lucide-react'
+import { ChevronDown, ChevronLeft, Calendar, Cloud, Compass, Image as ImageIcon, LayoutGrid, LayoutList, Link2, LogOut, Map as MapIcon, MapPin, Plus, Printer, StickyNote, Clock, UserPlus, X } from 'lucide-react'
+import Modal from '@/components/Modal'
 import type { DayTabConfig } from '@/components/DayTabs'
 import { DEFAULT_DAY_TAB_CONFIG } from '@/components/DayTabs'
 import {
@@ -77,6 +78,9 @@ export default function TripDetail() {
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteBusy, setInviteBusy] = useState(false)
+  const [coverEditOpen, setCoverEditOpen] = useState(false)
+  const [coverUrlInput, setCoverUrlInput] = useState('')
+  const [coverBusy, setCoverBusy] = useState(false)
   const [weatherVisible, setWeatherVisible] = useState(false)
   const [activitiesOpen, setActivitiesOpen] = useState(true)
   const [budgetOpen, setBudgetOpen] = useState(true)
@@ -490,6 +494,21 @@ export default function TripDetail() {
     }
   }
 
+  const handleSaveCoverImage = async () => {
+    const url = coverUrlInput.trim()
+    setCoverBusy(true)
+    try {
+      await updateTrip(tripId, { coverPhotoUrl: url })
+      toast.success(url ? 'Cover image updated' : 'Cover image removed')
+      setCoverEditOpen(false)
+    } catch (e) {
+      console.error(e)
+      toast.error('Failed to update cover image')
+    } finally {
+      setCoverBusy(false)
+    }
+  }
+
   const handleMoveActivity = async (
     activityId: string,
     fromKind: 'day' | 'list', fromId: string,
@@ -578,6 +597,13 @@ export default function TripDetail() {
                 <Cloud className="h-4 w-4" />
               </button>
             )}
+            <button
+              onClick={() => { setCoverUrlInput(trip.coverPhotoUrl ?? ''); setCoverEditOpen(true) }}
+              className="rounded p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-sky-600"
+              title="Edit cover image"
+            >
+              <ImageIcon className="h-4 w-4" />
+            </button>
             <button
               onClick={handleShareTrip}
               className="hidden items-center gap-1 rounded px-2 py-1.5 text-sm text-slate-600 hover:bg-slate-100 hover:text-sky-600 sm:flex"
@@ -1130,6 +1156,58 @@ export default function TripDetail() {
           }}
         />
       )}
+
+      {/* Cover image edit modal */}
+      <Modal
+        open={coverEditOpen}
+        onClose={() => setCoverEditOpen(false)}
+        title="Trip cover image"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setCoverEditOpen(false)}
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={coverBusy}
+              onClick={handleSaveCoverImage}
+              className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+            >
+              {coverBusy ? 'Saving…' : 'Save'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700">Image URL</span>
+            <input
+              type="url"
+              value={coverUrlInput}
+              onChange={(e) => setCoverUrlInput(e.target.value)}
+              placeholder="https://example.com/photo.jpg"
+              className="input mt-1"
+              autoFocus
+            />
+            <span className="mt-1 block text-xs text-slate-500">Leave blank to remove the cover image.</span>
+          </label>
+          {coverUrlInput.trim() && (
+            <div className="overflow-hidden rounded-lg border border-slate-200">
+              <img
+                src={coverUrlInput.trim()}
+                alt="Cover preview"
+                className="h-40 w-full object-cover"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                onLoad={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'block' }}
+              />
+            </div>
+          )}
+        </div>
+      </Modal>
 
       {/* Invite member modal */}
       {inviteOpen && (
