@@ -7,7 +7,7 @@ import {
 import { SortableContext, horizontalListSortingStrategy, verticalListSortingStrategy, arrayMove, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Map, Marker, useApiIsLoaded, useMap } from '@vis.gl/react-google-maps'
-import { GripVertical, LayoutGrid, Map as MapIcon } from 'lucide-react'
+import { ChevronDown, GripVertical, LayoutGrid, Map as MapIcon } from 'lucide-react'
 import type { Activity, Day, ScratchList } from '@/lib/types'
 import { formatDateISO } from '@/lib/utils'
 import { useMapsAuthFailed } from '@/lib/mapsStatus'
@@ -583,6 +583,10 @@ function OverviewMap({ days, scratchLists }: { days: Day[]; scratchLists: Scratc
 
   // visibility: key = day.id or list.id, value = visible (default true)
   const [hidden, setHidden] = useState<globalThis.Set<string>>(new globalThis.Set())
+  // Legend collapsed on mobile by default, expanded on md+
+  const [legendOpen, setLegendOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 768 : true,
+  )
 
   const toggle = (id: string) => {
     setHidden((prev) => {
@@ -622,8 +626,16 @@ function OverviewMap({ days, scratchLists }: { days: Day[]; scratchLists: Scratc
       <FitAllPoints points={visiblePoints} />
       <OverviewMarkers days={days} scratchLists={scratchLists} hidden={hidden} />
       {(days.length > 0 || scratchLists.length > 0) && (
-        <div className="absolute bottom-8 left-2 z-10 max-h-64 overflow-y-auto rounded-lg bg-white/95 p-2 shadow-lg backdrop-blur-sm">
-          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Show on map</p>
+        <div className="absolute bottom-8 left-2 z-10 flex max-h-64 max-w-[60vw] flex-col rounded-lg bg-white/95 shadow-lg backdrop-blur-sm md:max-w-none">
+          <button
+            onClick={() => setLegendOpen((v) => !v)}
+            className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50"
+          >
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Show on map</span>
+            <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${legendOpen ? '' : '-rotate-90'}`} />
+          </button>
+          {legendOpen && (
+          <div className="overflow-y-auto px-2 pb-2">
           {days.map((day, i) => {
             const visible = !hidden.has(day.id)
             const color = DAY_COLORS[i % DAY_COLORS.length]
@@ -664,6 +676,8 @@ function OverviewMap({ days, scratchLists }: { days: Day[]; scratchLists: Scratc
               </label>
             )
           })}
+          </div>
+          )}
         </div>
       )}
     </Map>
