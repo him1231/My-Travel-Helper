@@ -35,6 +35,7 @@ export type Activity = {
   notes?: string
   photos?: string[]
   route?: RouteInfo
+  hotelCheckIn?: string // ISO date of the night stayed; presence signals a hotel-stay activity
 }
 
 export type Day = {

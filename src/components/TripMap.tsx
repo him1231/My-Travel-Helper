@@ -105,6 +105,7 @@ type Props = {
   scratchLists?: ScratchList[]
   onAddToList?: (poi: POI, listId: string) => void
   onOptimizeRoute?: (orderedIds: string[]) => void
+  onAddHotel?: (poi: POI, dayId: string) => void
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -135,7 +136,7 @@ export default function TripMap(props: Props) {
 
 function TripMapInner({
   activities, selectedId, onSelectActivity, fallbackCenter,
-  onAddPOI, allDays, scratchLists, onAddToList, onOptimizeRoute,
+  onAddPOI, allDays, scratchLists, onAddToList, onOptimizeRoute, onAddHotel,
 }: Props) {
   const [mapPOI, setMapPOI]           = useState<POI | null>(null)
   const [nearbyPOIs, setNearbyPOIs]   = useState<POI[]>([])
@@ -148,6 +149,7 @@ function TripMapInner({
   const [loadingExplore, setLoadingExplore] = useState(false)
   const [searchPin, setSearchPin]     = useState<{ lat: number; lng: number } | null>(null)
   const [listOpen, setListOpen]       = useState(false)
+  const [hotelPickerOpen, setHotelPickerOpen] = useState(false)
 
   const addedPlaceIds = useMemo(
     () => new Set(activities.filter((a) => a.poi?.placeId).map((a) => a.poi!.placeId!)),
@@ -215,7 +217,7 @@ function TripMapInner({
   const isAdded = !!(mapPOI?.placeId && addedPlaceIds.has(mapPOI.placeId))
 
   const dismissPOI = useCallback(() => {
-    setMapPOI(null); setNearbyPOIs([]); setListOpen(false)
+    setMapPOI(null); setNearbyPOIs([]); setListOpen(false); setHotelPickerOpen(false)
   }, [])
 
   return (
@@ -511,6 +513,40 @@ function TripMapInner({
                 </div>
               )}
             </div>
+
+            {/* Hotel stay assignment — shown for any lodging POI */}
+            {onAddHotel && allDays && allDays.length > 0 && mapPOI.category === 'hotel' && (
+              <div className="mt-2 relative">
+                <button
+                  onClick={() => setHotelPickerOpen((v) => !v)}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-indigo-300 bg-indigo-50 py-2.5 text-sm font-medium text-indigo-700 hover:bg-indigo-100 transition"
+                >
+                  🏨 Add as hotel stay…
+                </button>
+                {hotelPickerOpen && (
+                  <div className="absolute bottom-full left-0 right-0 mb-1 rounded-xl border border-indigo-200 bg-white p-1 shadow-lg z-10">
+                    <p className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      Check in on which night?
+                    </p>
+                    {allDays.map((day, i) => (
+                      <button
+                        key={day.id}
+                        onClick={() => {
+                          onAddHotel(mapPOI, day.id)
+                          setHotelPickerOpen(false)
+                          dismissPOI()
+                        }}
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-700 hover:bg-indigo-50"
+                      >
+                        <span className="font-medium text-indigo-600">Day {i + 1}</span>
+                        <span className="text-slate-400">{day.date}</span>
+                        {day.title && <span className="truncate text-slate-500">· {day.title}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -9,6 +9,7 @@ const TYPE_STYLES: Record<string, { badge: string; border: string }> = {
   poi: { badge: 'bg-rose-500', border: '' },
   note: { badge: 'bg-amber-400', border: 'border-amber-100 bg-amber-50' },
   transport: { badge: 'bg-sky-500', border: 'border-sky-100 bg-sky-50' },
+  hotel: { badge: 'bg-indigo-500', border: 'border-indigo-100 bg-indigo-50/40' },
 }
 
 export default function ActivityCard({
@@ -20,7 +21,8 @@ export default function ActivityCard({
   onSelect?: () => void
 }) {
   const a = activity
-  const style_info = TYPE_STYLES[a.type] ?? TYPE_STYLES.poi
+  const isHotel = a.poi?.category === 'hotel' && !!a.hotelCheckIn
+  const style_info = isHotel ? TYPE_STYLES.hotel : (TYPE_STYLES[a.type] ?? TYPE_STYLES.poi)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: a.id })
 
   const dndStyle = {
@@ -50,7 +52,7 @@ export default function ActivityCard({
           <GripVertical className="h-4 w-4" />
         </button>
         <div className={`grid h-7 w-7 flex-shrink-0 place-items-center rounded-full text-xs font-bold text-white ${style_info.badge}`}>
-          {a.type === 'note' ? <StickyNote className="h-3.5 w-3.5" /> : a.type === 'transport' ? <Truck className="h-3.5 w-3.5" /> : index + 1}
+          {isHotel ? '🏨' : a.type === 'note' ? <StickyNote className="h-3.5 w-3.5" /> : a.type === 'transport' ? <Truck className="h-3.5 w-3.5" /> : index + 1}
         </div>
         <div className="min-w-0 flex-1">
           <div className="font-medium text-slate-900">{a.title}</div>
