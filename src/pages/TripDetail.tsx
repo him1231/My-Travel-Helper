@@ -794,6 +794,11 @@ export default function TripDetail() {
                 )}
               </div>
 
+              {/* Hotel checkout banner — always shown at top if checked out of prev-day hotel */}
+              {checkOutActivity && (
+                <HotelBanner type="checkout" hotelName={checkOutActivity.title} />
+              )}
+
               {/* Stops */}
               {localActivities.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
@@ -881,9 +886,6 @@ export default function TripDetail() {
                               ))}
                             </div>
                           )}
-                          {checkOutActivity && (
-                            <HotelBanner type="checkout" hotelName={checkOutActivity.title} />
-                          )}
                           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                             <SortableContext items={localActivities.map((a) => a.id)} strategy={verticalListSortingStrategy}>
                               <div className="space-y-2">
@@ -902,14 +904,16 @@ export default function TripDetail() {
                               </div>
                             </SortableContext>
                           </DndContext>
-                          {checkInActivity && (
-                            <HotelBanner type="checkin" hotelName={checkInActivity.title} />
-                          )}
                         </>
                       )}
                     </>
                   )}
                 </>
+              )}
+
+              {/* Hotel check-in banner — always shown at bottom if hotel assigned to this day */}
+              {checkInActivity && (
+                <HotelBanner type="checkin" hotelName={checkInActivity.title} />
               )}
             </>
           )}
