@@ -83,6 +83,7 @@ export default function TripDetail() {
   const [checklistOpen, setChecklistOpen] = useState(true)
   const [showOverview, setShowOverview] = useState(false)
   const [overviewInitialView, setOverviewInitialView] = useState<'kanban' | 'map'>('kanban')
+  const [mapPreviewPOI, setMapPreviewPOI] = useState<POI | null>(null)
   const fetchingRoutesRef = useRef<Set<string>>(new Set())
   const [scratchLists, setScratchLists] = useState<ScratchList[]>([])
   const [activeTabKind, setActiveTabKind] = useState<'day' | 'list'>('day')
@@ -1046,7 +1047,7 @@ export default function TripDetail() {
           {/* Search overlay on map */}
           <div className="absolute left-1/2 top-3 z-20 w-full max-w-sm -translate-x-1/2 px-3">
             <div className="rounded-xl shadow-lg">
-              <PlacesAutocomplete onSelect={handleAddPOI} placeholder="Search to add a stop…" />
+              <PlacesAutocomplete onSelect={setMapPreviewPOI} placeholder="Search to add a stop…" />
             </div>
           </div>
           <TripMap
@@ -1055,6 +1056,7 @@ export default function TripDetail() {
             onSelectActivity={(id) => { setSelectedActivityId(id); setEditingActivityId(id) }}
             fallbackCenter={trip.destination ? { lat: trip.destination.lat, lng: trip.destination.lng } : undefined}
             onAddPOI={handleAddPOI}
+            previewPOI={mapPreviewPOI}
             allDays={days}
             scratchLists={scratchLists}
             onAddToList={async (poi, listId) => {

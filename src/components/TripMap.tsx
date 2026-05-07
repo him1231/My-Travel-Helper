@@ -106,6 +106,7 @@ type Props = {
   onAddToList?: (poi: POI, listId: string) => void
   onOptimizeRoute?: (orderedIds: string[]) => void
   onAddHotel?: (poi: POI, dayId: string) => void
+  previewPOI?: POI | null
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -136,7 +137,7 @@ export default function TripMap(props: Props) {
 
 function TripMapInner({
   activities, selectedId, onSelectActivity, fallbackCenter,
-  onAddPOI, allDays, scratchLists, onAddToList, onOptimizeRoute, onAddHotel,
+  onAddPOI, allDays, scratchLists, onAddToList, onOptimizeRoute, onAddHotel, previewPOI,
 }: Props) {
   const [mapPOI, setMapPOI]           = useState<POI | null>(null)
   const [nearbyPOIs, setNearbyPOIs]   = useState<POI[]>([])
@@ -150,6 +151,10 @@ function TripMapInner({
   const [searchPin, setSearchPin]     = useState<{ lat: number; lng: number } | null>(null)
   const [listOpen, setListOpen]       = useState(false)
   const [hotelPickerOpen, setHotelPickerOpen] = useState(false)
+
+  useEffect(() => {
+    if (previewPOI) { setMapPOI(previewPOI); setNearbyPOIs([]); setListOpen(false) }
+  }, [previewPOI])
 
   const addedPlaceIds = useMemo(
     () => new Set(activities.filter((a) => a.poi?.placeId).map((a) => a.poi!.placeId!)),
@@ -412,7 +417,7 @@ function TripMapInner({
 
       {/* ── POI bottom sheet ── */}
       {mapPOI && (
-        <div className="absolute bottom-0 left-0 right-0 z-10 max-h-[70%] overflow-y-auto rounded-t-2xl bg-white shadow-2xl">
+        <div className="absolute bottom-3 left-3 right-3 z-10 max-h-[70%] overflow-y-auto rounded-2xl bg-white shadow-2xl">
           {mapPOI.photoUrl && (
             <img src={mapPOI.photoUrl} alt={mapPOI.name} className="h-36 w-full rounded-t-2xl object-cover" />
           )}
