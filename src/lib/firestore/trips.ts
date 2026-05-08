@@ -84,7 +84,10 @@ export function subscribeTrip(tripId: string, cb: (trip: Trip | null) => void) {
 export function subscribeDays(tripId: string, cb: (days: Day[]) => void) {
   const q = query(daysCol(tripId), orderBy('date'))
   return onSnapshot(q, (snap) => {
-    cb(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Day, 'id'>) })))
+    cb(snap.docs.map((d) => {
+      const data = d.data() as Omit<Day, 'id'>
+      return { id: d.id, ...data, activities: sortByOrder(data.activities ?? []) }
+    }))
   })
 }
 
@@ -289,7 +292,10 @@ export async function getTripByShareToken(token: string): Promise<Trip | null> {
 export async function getDaysForTrip(tripId: string): Promise<Day[]> {
   const q = query(daysCol(tripId), orderBy('date'))
   const snap = await getDocs(q)
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Day, 'id'>) }))
+  return snap.docs.map((d) => {
+    const data = d.data() as Omit<Day, 'id'>
+    return { id: d.id, ...data, activities: sortByOrder(data.activities ?? []) }
+  })
 }
 
 // ── Scratch Lists ──────────────────────────────────────────────────────────
@@ -299,7 +305,10 @@ const listsCol = (tripId: string) => collection(db, 'trips', tripId, 'lists')
 export function subscribeScratchLists(tripId: string, cb: (lists: ScratchList[]) => void) {
   return onSnapshot(
     query(listsCol(tripId), orderBy('createdAt')),
-    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ScratchList, 'id'>) }))),
+    (snap) => cb(snap.docs.map((d) => {
+      const data = d.data() as Omit<ScratchList, 'id'>
+      return { id: d.id, ...data, activities: sortByOrder(data.activities ?? []) }
+    })),
     (err) => { console.error('subscribeScratchLists:', err); cb([]) },
   )
 }
@@ -425,6 +434,12 @@ export async function moveBetweenLists(
 function clampIndex(idx: number | undefined, max: number): number {
   if (idx === undefined || idx < 0) return max
   return Math.min(idx, max)
+}
+
+// Defensive sort by .order so that any external mutation or partial merge
+// that scrambles array order doesn't corrupt the rendered sequence.
+function sortByOrder(activities: Activity[]): Activity[] {
+  return [...activities].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 }
 
 function mergePatch(activity: Activity, patch: Partial<Activity>): Activity {
