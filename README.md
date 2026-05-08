@@ -22,8 +22,18 @@ Sign in with Google to get started. No account required beyond a Google account.
 - **Customisable tab display** — gear popup lets you toggle title/date/stop-count per tab; preference persists in localStorage
 - Add or remove days freely; date label and stop count update live
 - Drag-and-drop reorder activities within a day (powered by @dnd-kit)
-- Activity types: **POI** (from Places search), **transport**, and **note**
+- Activity types: **POI** (from Places search), **transport**, **note**, and **flight**
 - Per-activity: start time, duration, cost, notes, category, photos, drive route mode
+
+### Flight import
+- **Add flight** button (bottom-of-sidebar quick-add row, alongside Note / Transport)
+- **Two import modes** — switchable tabs in the modal:
+  - **Manual entry** — structured form for airline, flight number, departure/arrival airport (IATA) + city + local datetime + terminal + gate, plus confirmation/PNR, seat, class
+  - **Paste from email** — drop in a confirmation email; a regex extractor pre-fills airline, flight number, IATA codes, times, dates, confirmation, seat, class, terminal, and gate. You jump to the manual tab to review and edit before saving — never a silent import.
+- Flight lands on the day matching its **departure date**; if that day isn't in the trip yet, it's auto-created so the flight has a home.
+- **Custom card layout** in the day list and shared view: cyan plane badge, airline · flight #, `JFK → LHR · 14:30 → 02:30+1` (overnight day-shift indicated), terminal/gate, confirmation, seat, class chip
+- **iCal export** treats flights specially: location becomes `JFK ✈ LHR`, description includes confirmation, seat, terminals, and gates
+- No paid flight-status API — the feature is purely about capturing/displaying booking data the user already has
 
 ### Scratch / planning lists
 - Named lists for backup POIs and "maybe" options, kept beside day tabs
@@ -61,7 +71,7 @@ Sign in with Google to get started. No account required beyond a Google account.
 - **Stops** — list view with category filter pills *or* timeline view; drag-and-drop reorder
 - **Budget** — per-activity cost breakdown, day total, trip total with progress bar vs budget limit
 - **Checklist** — trip-level packing list with check/uncheck and add/remove items
-- **Quick-add buttons** at the very bottom: + Note · + Transport (single tap from anywhere in the sidebar)
+- **Quick-add buttons** at the very bottom: + Note · + Transport · + Flight (single tap from anywhere in the sidebar)
 
 ### Header & weather
 - Combined app + trip header: logo, back button, trip title/destination/dates, trip actions, signed-in user
@@ -108,6 +118,8 @@ src/
 │   ├── ActivityCard.tsx        sortable list-view stop card
 │   ├── ActivityEditModal.tsx   shared edit modal (works for day & list activities)
 │   ├── AuthGuard.tsx           protected route wrapper
+│   ├── FlightImportModal.tsx   manual + paste-from-email flight import
+│   ├── Linkify.tsx             render text with http(s) URLs as clickable links
 │   ├── DayTabs.tsx             day buttons + ⚙ tab-display config (portal popup)
 │   ├── Header.tsx
 │   ├── Modal.tsx
@@ -124,7 +136,8 @@ src/
 ├── lib/
 │   ├── firebase.ts             Firestore + Auth init (with offline persistence)
 │   ├── firestore/trips.ts      all trip / day / list / activity CRUD
-│   ├── types.ts                Trip, Day, Activity, POI, ScratchList, …
+│   ├── flightParse.ts          best-effort regex extractor for flight emails
+│   ├── types.ts                Trip, Day, Activity, FlightInfo, POI, ScratchList, …
 │   └── utils.ts                date / money / iCal helpers
 └── pages/
     ├── Landing.tsx · Login.tsx · Profile.tsx

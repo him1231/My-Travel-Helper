@@ -17,6 +17,7 @@ import { useAuth } from '@/hooks/useAuth'
 import DayTabs from '@/components/DayTabs'
 import ActivityCard from '@/components/ActivityCard'
 import ActivityEditModal from '@/components/ActivityEditModal'
+import FlightImportModal from '@/components/FlightImportModal'
 import OverviewView from '@/components/OverviewView'
 import PlacesAutocomplete from '@/components/PlacesAutocomplete'
 import TripMap from '@/components/TripMap'
@@ -24,7 +25,7 @@ import TimelineView from '@/components/TimelineView'
 import NearbyDrawer from '@/components/NearbyDrawer'
 import WeatherWidget from '@/components/WeatherWidget'
 import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, updateDayTitle, reorderActivities, reorderListActivities, reassignDayDates, updateActivity, removeActivity, moveActivityBetweenDays, subscribeScratchLists, addScratchList, renameScratchList, removeScratchList, addActivityToList, updateActivityInList, removeActivityFromList, moveBetweenDayAndList, moveFromListToDay, moveBetweenLists } from '@/lib/firestore/trips'
-import type { Trip, Day, Activity, POI, ScratchList } from '@/lib/types'
+import type { Trip, Day, Activity, FlightInfo, POI, ScratchList } from '@/lib/types'
 import { todayISO, addDaysISO, formatDateISO, formatMoney, exportIcal } from '@/lib/utils'
 
 function SectionHeader({
@@ -92,6 +93,7 @@ export default function TripDetail() {
   const [scratchLists, setScratchLists] = useState<ScratchList[]>([])
   const [activeTabKind, setActiveTabKind] = useState<'day' | 'list'>('day')
   const [selectedListId, setSelectedListId] = useState<string | null>(null)
+  const [flightModalOpen, setFlightModalOpen] = useState(false)
   const [listNameValue, setListNameValue] = useState('')
   const [dayTitleValue, setDayTitleValue] = useState('')
   const dayTitleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -377,6 +379,58 @@ export default function TripDetail() {
     const activity: Activity = { id: nanoid(8), order: selectedDay.activities.length, type: 'transport', title: 'Transport' }
     try { await addActivity(tripId, selectedDay, activity); setEditingActivityId(activity.id) }
     catch (e) { console.error(e); toast.error('Failed to add transport') }
+  }
+
+  const handleAddFlight = async (flight: FlightInfo) => {
+    if (!tripId) return
+    // Title: "AA 100 · JFK → LHR" or fallback
+    const route = [flight.departure.airportCode, flight.arrival.airportCode].filter(Boolean).join(' → ')
+    const titleParts = [flight.flightNumber || flight.airline, route].filter(Boolean)
+    const title = titleParts.length > 0 ? titleParts.join(' · ') : 'Flight'
+    // Pull HH:mm and duration for sidebar display + iCal export
+    const startTime = flight.departure.time?.includes('T')
+      ? flight.departure.time.split('T')[1].slice(0, 5)
+      : undefined
+    let durationMinutes: number | undefined
+    if (flight.departure.time && flight.arrival.time) {
+      const dep = new Date(flight.departure.time)
+      const arr = new Date(flight.arrival.time)
+      const diff = Math.round((arr.getTime() - dep.getTime()) / 60_000)
+      if (diff > 0 && diff < 60 * 48) durationMinutes = diff
+    }
+
+    // Add to a scratch list when on the list tab — flights without a date can live there.
+    if (activeTabKind === 'list' && selectedList) {
+      const activity: Activity = {
+        id: nanoid(8), order: selectedList.activities.length,
+        type: 'flight', title, startTime, durationMinutes, flight,
+      }
+      try { await addActivityToList(tripId, selectedList, activity) }
+      catch (e) { console.error(e); toast.error('Failed to add flight') }
+      return
+    }
+
+    // Otherwise, place on the day matching the departure date — falling back to selectedDay.
+    const departureDate = flight.departure.time?.split('T')[0]
+    let targetDay = departureDate ? days.find((d) => d.id === departureDate) : selectedDay
+    if (!targetDay && departureDate) {
+      // Departure date not in trip yet — create the day so the flight has a home.
+      try { await addDay(tripId, departureDate) }
+      catch (e) { console.error(e); toast.error('Failed to add day for flight'); return }
+      targetDay = { id: departureDate, date: departureDate, notes: '', activities: [] }
+    }
+    if (!targetDay) {
+      toast.error('Pick a day or set the departure time first')
+      return
+    }
+    const activity: Activity = {
+      id: nanoid(8), order: targetDay.activities.length,
+      type: 'flight', title, startTime, durationMinutes, flight,
+    }
+    try {
+      await addActivity(tripId, targetDay, activity)
+      setSelectedDayId(targetDay.id)
+    } catch (e) { console.error(e); toast.error('Failed to add flight') }
   }
 
   const handleDayNotesChange = (value: string) => {
@@ -1096,6 +1150,12 @@ export default function TripDetail() {
               >
                 🚌 Transport
               </button>
+              <button
+                onClick={() => setFlightModalOpen(true)}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                ✈️ Flight
+              </button>
             </div>
           )}
         </aside>
@@ -1190,6 +1250,13 @@ export default function TripDetail() {
           }}
         />
       )}
+
+      <FlightImportModal
+        open={flightModalOpen}
+        onClose={() => setFlightModalOpen(false)}
+        onSubmit={handleAddFlight}
+      />
+
 
       {/* Cover image edit modal */}
       <Modal

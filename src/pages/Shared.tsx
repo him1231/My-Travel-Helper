@@ -124,22 +124,29 @@ export default function Shared() {
             </div>
           ) : (
             <div className="space-y-2">
-              {selectedDay.activities.map((a, i) => (
+              {selectedDay.activities.map((a, i) => {
+                const isFlight = a.type === 'flight' && !!a.flight
+                const badge = isFlight ? 'bg-cyan-600' : 'bg-rose-500'
+                return (
                 <div
                   key={a.id}
                   className="rounded-lg border border-slate-200 bg-white p-3"
                 >
                   <div className="flex items-start gap-3">
-                    <div className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-full bg-rose-500 text-xs font-bold text-white">
-                      {i + 1}
+                    <div className={`grid h-7 w-7 flex-shrink-0 place-items-center rounded-full text-xs font-bold text-white ${badge}`}>
+                      {isFlight ? '✈' : i + 1}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="font-medium text-slate-900">{a.title}</div>
+                      {isFlight ? (
+                        <SharedFlightSummary flight={a.flight!} />
+                      ) : (
+                        <div className="font-medium text-slate-900">{a.title}</div>
+                      )}
                       {a.poi?.address && (
                         <div className="mt-0.5 text-xs text-slate-500">{a.poi.address}</div>
                       )}
                       <div className="mt-1.5 flex flex-wrap gap-3 text-xs text-slate-500">
-                        {a.startTime && (
+                        {a.startTime && !isFlight && (
                           <span>{a.startTime}{a.durationMinutes ? ` · ${a.durationMinutes}m` : ''}</span>
                         )}
                         {a.cost && a.cost.amount > 0 && (
@@ -150,7 +157,8 @@ export default function Shared() {
                     </div>
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
 
@@ -170,5 +178,35 @@ export default function Shared() {
         </section>
       </div>
     </div>
+  )
+}
+
+function SharedFlightSummary({ flight }: { flight: NonNullable<import('@/lib/types').Activity['flight']> }) {
+  const dep = flight.departure
+  const arr = flight.arrival
+  const time = (iso?: string) => iso?.includes('T') ? iso.split('T')[1].slice(0, 5) : iso
+  const date = (iso?: string) => iso?.includes('T') ? iso.split('T')[0] : undefined
+  const dDate = date(dep.time); const aDate = date(arr.time)
+  const overnight = dDate && aDate && dDate !== aDate
+    ? '+' + Math.round((new Date(aDate).getTime() - new Date(dDate).getTime()) / 86_400_000)
+    : ''
+  const route = (dep.airportCode || '???') + ' → ' + (arr.airportCode || '???')
+  const label = [flight.airline, flight.flightNumber].filter(Boolean).join(' · ') || 'Flight'
+  return (
+    <>
+      <div className="font-medium text-slate-900">{label}</div>
+      <div className="mt-0.5 text-xs font-medium text-slate-700">
+        {route}
+        <span className="ml-2 text-slate-500">{(time(dep.time) || '—:—') + ' → ' + (time(arr.time) || '—:—') + overnight}</span>
+      </div>
+      {(dep.terminal || dep.gate || arr.terminal || arr.gate || flight.confirmation || flight.seat) && (
+        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
+          {dep.terminal && <span>Dep T{dep.terminal}{dep.gate ? ` · Gate ${dep.gate}` : ''}</span>}
+          {arr.terminal && <span>Arr T{arr.terminal}{arr.gate ? ` · Gate ${arr.gate}` : ''}</span>}
+          {flight.confirmation && <span>Conf {flight.confirmation}</span>}
+          {flight.seat && <span>Seat {flight.seat}</span>}
+        </div>
+      )}
+    </>
   )
 }

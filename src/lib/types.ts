@@ -26,10 +26,30 @@ export type RouteInfo = {
   cacheKey?: string
 }
 
+export type FlightLeg = {
+  airportCode?: string  // IATA "JFK"
+  airportName?: string  // "John F. Kennedy International"
+  city?: string
+  // Local time at airport, ISO without TZ: "2025-05-08T14:30"
+  time?: string
+  terminal?: string
+  gate?: string
+}
+
+export type FlightInfo = {
+  airline?: string         // "American Airlines" or "AA"
+  flightNumber?: string    // normalized "AA 100"
+  confirmation?: string    // PNR / booking reference
+  seat?: string
+  bookingClass?: string    // "Economy", "Business"
+  departure: FlightLeg
+  arrival: FlightLeg
+}
+
 export type Activity = {
   id: string
   order: number
-  type: 'poi' | 'transport' | 'note'
+  type: 'poi' | 'transport' | 'note' | 'flight'
   title: string
   poi?: POI
   startTime?: string // "HH:mm"
@@ -39,6 +59,7 @@ export type Activity = {
   photos?: string[]
   route?: RouteInfo
   hotelCheckIn?: string // ISO date of the night stayed; presence signals a hotel-stay activity
+  flight?: FlightInfo
 }
 
 export type Day = {

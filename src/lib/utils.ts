@@ -104,7 +104,21 @@ export function exportIcal(tripTitle: string, days: import('./types').Day[]): vo
       )
 
       const uid = `${a.id}@my-travel-helper`
-      const location = a.poi?.address ?? a.poi?.name ?? ''
+      // For flights, location = "JFK ✈ LHR"; description includes confirmation/seat.
+      let location = a.poi?.address ?? a.poi?.name ?? ''
+      let description = a.notes ?? ''
+      if (a.type === 'flight' && a.flight) {
+        const dep = a.flight.departure.airportCode || ''
+        const arr = a.flight.arrival.airportCode || ''
+        if (dep || arr) location = `${dep} ✈ ${arr}`
+        const extras: string[] = []
+        if (a.flight.flightNumber) extras.push(`Flight: ${a.flight.flightNumber}`)
+        if (a.flight.confirmation) extras.push(`Conf: ${a.flight.confirmation}`)
+        if (a.flight.seat) extras.push(`Seat: ${a.flight.seat}`)
+        if (a.flight.departure.terminal) extras.push(`Dep T${a.flight.departure.terminal}${a.flight.departure.gate ? ` Gate ${a.flight.departure.gate}` : ''}`)
+        if (a.flight.arrival.terminal) extras.push(`Arr T${a.flight.arrival.terminal}${a.flight.arrival.gate ? ` Gate ${a.flight.arrival.gate}` : ''}`)
+        if (extras.length > 0) description = [extras.join('\n'), description].filter(Boolean).join('\n\n')
+      }
 
       veventLines.push(
         'BEGIN:VEVENT',
@@ -114,7 +128,7 @@ export function exportIcal(tripTitle: string, days: import('./types').Day[]): vo
         foldLine(`DTEND:${dtEnd}`),
         foldLine(`SUMMARY:${escape(a.title)}`),
         ...(location ? [foldLine(`LOCATION:${escape(location)}`)] : []),
-        ...(a.notes ? [foldLine(`DESCRIPTION:${escape(a.notes)}`)] : []),
+        ...(description ? [foldLine(`DESCRIPTION:${escape(description)}`)] : []),
         'END:VEVENT',
       )
     }
