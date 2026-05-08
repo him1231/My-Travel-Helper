@@ -62,7 +62,10 @@ export default function ActivityEditModal({
       durationMinutes: duration ? Number(duration) : undefined,
       cost: costAmount ? { amount: Number(costAmount), currency } : undefined,
       notes: notes || undefined,
-      photos: photos.length > 0 ? photos : undefined,
+      // Always persist the current photo list — including [] — so explicitly
+      // clearing photos sticks. Sending undefined would delete the field, and
+      // the next open would re-seed from poi.photoUrl.
+      photos,
     }
     if (activity.poi && category) {
       patch.poi = { ...activity.poi, category: category as ActivityCategory }
