@@ -36,18 +36,26 @@ export default function WeatherWidget({ lat, lng }: { lat: number; lng: number }
     setError(false)
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=5`
     fetch(url)
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`weather HTTP ${r.status}`)
+        return r.json()
+      })
       .then((data) => {
-        const days: DayForecast[] = data.daily.time.map((date: string, i: number) => ({
+        const daily = data?.daily
+        if (!daily?.time || !Array.isArray(daily.time)) {
+          throw new Error('weather payload missing daily.time')
+        }
+        const days: DayForecast[] = daily.time.map((date: string, i: number) => ({
           date,
-          tempMax: Math.round(data.daily.temperature_2m_max[i]),
-          tempMin: Math.round(data.daily.temperature_2m_min[i]),
-          weatherCode: data.daily.weathercode[i],
+          tempMax: Math.round(daily.temperature_2m_max?.[i] ?? 0),
+          tempMin: Math.round(daily.temperature_2m_min?.[i] ?? 0),
+          weatherCode: daily.weathercode?.[i] ?? 0,
         }))
         setForecast(days)
         setLoading(false)
       })
-      .catch(() => {
+      .catch((err) => {
+        console.warn('WeatherWidget:', err)
         setError(true)
         setLoading(false)
       })
