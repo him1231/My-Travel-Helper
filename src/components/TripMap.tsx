@@ -494,34 +494,37 @@ function TripMapInner({
 
               {/* Save to list */}
               {scratchLists && scratchLists.length > 0 && onAddToList && (
-                <div className="relative">
-                  <button
-                    onClick={() => setListOpen((v) => !v)}
-                    className="flex h-full items-center gap-1 rounded-xl border border-slate-200 px-3 text-sm text-slate-600 hover:bg-slate-50"
-                    title="Save to list"
-                  >
-                    📋
-                  </button>
-                  {listOpen && (
-                    <div className="absolute bottom-full right-0 mb-1 w-44 rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
-                      {scratchLists.map((l) => (
-                        <button
-                          key={l.id}
-                          onClick={() => handleAddToList(l.id)}
-                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50"
-                        >
-                          📋 {l.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <button
+                  onClick={() => setListOpen((v) => !v)}
+                  className="flex h-full items-center gap-1 rounded-xl border border-slate-200 px-3 text-sm text-slate-600 hover:bg-slate-50"
+                  title="Save to list"
+                >
+                  📋
+                </button>
               )}
             </div>
 
+            {/* Save-to-list inline picker — kept in flow so the bottom sheet's scroll reaches it */}
+            {listOpen && scratchLists && scratchLists.length > 0 && onAddToList && (
+              <div className="mt-2 rounded-xl border border-slate-200 bg-white p-1">
+                <p className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Save to which list?
+                </p>
+                {scratchLists.map((l) => (
+                  <button
+                    key={l.id}
+                    onClick={() => handleAddToList(l.id)}
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50"
+                  >
+                    📋 {l.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Hotel stay assignment — shown for any lodging POI */}
             {onAddHotel && allDays && allDays.length > 0 && mapPOI.category === 'hotel' && (
-              <div className="mt-2 relative">
+              <div className="mt-2">
                 <button
                   onClick={() => setHotelPickerOpen((v) => !v)}
                   className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-indigo-300 bg-indigo-50 py-2.5 text-sm font-medium text-indigo-700 hover:bg-indigo-100 transition"
@@ -529,7 +532,7 @@ function TripMapInner({
                   🏨 Add as hotel stay…
                 </button>
                 {hotelPickerOpen && (
-                  <div className="absolute bottom-full left-0 right-0 mb-1 rounded-xl border border-indigo-200 bg-white p-1 shadow-lg z-10">
+                  <div className="mt-1 rounded-xl border border-indigo-200 bg-white p-1">
                     <p className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                       Check in on which night?
                     </p>
