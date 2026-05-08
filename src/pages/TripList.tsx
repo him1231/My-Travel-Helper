@@ -14,14 +14,16 @@ export default function TripList() {
   const nav = useNavigate()
   const [trips, setTrips] = useState<Trip[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [showNew, setShowNew] = useState(false)
 
   useEffect(() => {
     if (!user) return
-    return subscribeUserTrips(user.uid, (t) => {
-      setTrips(t)
-      setLoading(false)
-    })
+    return subscribeUserTrips(
+      user.uid,
+      (t) => { setTrips(t); setLoading(false); setLoadError(false) },
+      () => { setLoadError(true); setLoading(false) },
+    )
   }, [user])
 
   const handleDelete = async (id: string) => {
@@ -55,6 +57,11 @@ export default function TripList() {
 
         {loading ? (
           <div className="mt-10 text-slate-500">Loading…</div>
+        ) : loadError ? (
+          <div className="mt-10 rounded-xl border border-rose-200 bg-rose-50 p-6 text-center text-rose-700">
+            <p className="font-medium">Couldn't load your trips.</p>
+            <p className="mt-1 text-sm">Check your connection and try refreshing the page.</p>
+          </div>
         ) : trips.length === 0 ? (
           <div className="mt-10 rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center text-slate-500">
             <p>No trips yet.</p>

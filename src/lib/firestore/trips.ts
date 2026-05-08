@@ -51,7 +51,11 @@ export async function createTrip(uid: string, input: NewTripInput): Promise<stri
   return ref.id
 }
 
-export function subscribeUserTrips(uid: string, cb: (trips: Trip[]) => void) {
+export function subscribeUserTrips(
+  uid: string,
+  cb: (trips: Trip[]) => void,
+  onError?: (err: unknown) => void,
+) {
   // orderBy('createdAt') combined with array-contains needs a composite index — sort client-side instead
   const q = query(tripsCol, where('memberIds', 'array-contains', uid))
   return onSnapshot(
@@ -66,7 +70,7 @@ export function subscribeUserTrips(uid: string, cb: (trips: Trip[]) => void) {
         })
       cb(trips)
     },
-    (err) => { console.error('subscribeUserTrips:', err); cb([]) },
+    (err) => { console.error('subscribeUserTrips:', err); onError?.(err) },
   )
 }
 
