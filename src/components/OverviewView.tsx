@@ -33,7 +33,6 @@ function colKey(kind: 'day' | 'list', id: string): ColKey { return `${kind}::${i
 type Props = {
   days: Day[]
   scratchLists: ScratchList[]
-  dayOrder?: string[] // custom column order (day IDs)
   initialView?: 'kanban' | 'map'
   onMoveActivity: (
     activityId: string,
@@ -50,7 +49,7 @@ type Props = {
   onSelectList?: (listId: string) => void
 }
 
-export default function OverviewView({ days, scratchLists, dayOrder, initialView, onMoveActivity, onReorderActivities, onReorderDays, onSelectActivity, onSelectDay, onSelectList }: Props) {
+export default function OverviewView({ days, scratchLists, initialView, onMoveActivity, onReorderActivities, onReorderDays, onSelectActivity, onSelectDay, onSelectList }: Props) {
   const [view, setView] = useState<'kanban' | 'map'>(initialView ?? 'kanban')
   useEffect(() => { if (initialView) setView(initialView) }, [initialView])
   // activeActivityId for activity drag; activeDayId for day column drag
@@ -64,17 +63,8 @@ export default function OverviewView({ days, scratchLists, dayOrder, initialView
   const sourceColRef = useRef<{ kind: 'day' | 'list'; id: string } | null>(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
-  // Apply custom order if provided, otherwise keep date order
-  const serverDayIds = useMemo(() => {
-    if (!dayOrder || dayOrder.length === 0) {
-      return days.map((d) => d.id)
-    }
-    const dayMap = new globalThis.Map(days.map((d) => [d.id, d]))
-    const sorted = dayOrder.map((id) => dayMap.get(id)).filter((d): d is Day => !!d).map((d) => d.id)
-    const inOrder = new globalThis.Set(dayOrder)
-    days.forEach((d) => { if (!inOrder.has(d.id)) sorted.push(d.id) })
-    return sorted
-  }, [days, dayOrder])
+  // Day columns follow date order; reordering shifts content between date slots.
+  const serverDayIds = useMemo(() => days.map((d) => d.id), [days])
 
   // Mirror of localDayIds so handleDragEnd always reads the latest order, not a stale closure
   const localDayIdsRef = useRef<string[]>(serverDayIds)

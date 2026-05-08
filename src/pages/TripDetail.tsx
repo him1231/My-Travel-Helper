@@ -716,7 +716,6 @@ export default function TripDetail() {
           <OverviewView
             days={days}
             scratchLists={scratchLists}
-            dayOrder={trip.dayOrder}
             initialView={overviewInitialView}
             onMoveActivity={handleMoveActivity}
             onReorderActivities={async (kind, containerId, orderedIds) => {
