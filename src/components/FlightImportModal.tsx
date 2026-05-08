@@ -1,18 +1,22 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Plane, ClipboardPaste, Pencil } from 'lucide-react'
 import Modal from '@/components/Modal'
-import type { FlightInfo } from '@/lib/types'
+import type { FlightInfo, Money } from '@/lib/types'
 import { parseFlightText } from '@/lib/flightParse'
 
 type Tab = 'manual' | 'paste'
 
 export default function FlightImportModal({
-  open, onClose, onSubmit,
+  open, onClose, onSubmit, initialFlight, initialCost, currency, onDelete,
 }: {
   open: boolean
   onClose: () => void
-  onSubmit: (flight: FlightInfo) => Promise<void> | void
+  onSubmit: (flight: FlightInfo, cost?: Money) => Promise<void> | void
+  initialFlight?: FlightInfo
+  initialCost?: Money
+  currency?: string
+  onDelete?: () => Promise<void> | void
 }) {
   const [tab, setTab] = useState<Tab>('manual')
   // form state — flat fields that mirror FlightInfo
@@ -32,13 +36,38 @@ export default function FlightImportModal({
   const [arrTerminal, setArrTerminal] = useState('')
   const [arrGate, setArrGate] = useState('')
   const [pastedText, setPastedText] = useState('')
+  const [costAmount, setCostAmount] = useState('')
+
+  // Seed form when opened in edit mode
+  useEffect(() => {
+    if (!open) return
+    if (initialFlight) {
+      setAirline(initialFlight.airline ?? '')
+      setFlightNumber(initialFlight.flightNumber ?? '')
+      setConfirmation(initialFlight.confirmation ?? '')
+      setSeat(initialFlight.seat ?? '')
+      setBookingClass(initialFlight.bookingClass ?? '')
+      setDepCode(initialFlight.departure.airportCode ?? '')
+      setDepCity(initialFlight.departure.city ?? '')
+      setDepTime(initialFlight.departure.time ?? '')
+      setDepTerminal(initialFlight.departure.terminal ?? '')
+      setDepGate(initialFlight.departure.gate ?? '')
+      setArrCode(initialFlight.arrival.airportCode ?? '')
+      setArrCity(initialFlight.arrival.city ?? '')
+      setArrTime(initialFlight.arrival.time ?? '')
+      setArrTerminal(initialFlight.arrival.terminal ?? '')
+      setArrGate(initialFlight.arrival.gate ?? '')
+    }
+    setCostAmount(initialCost?.amount != null ? String(initialCost.amount) : '')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   const reset = () => {
     setTab('manual')
     setAirline(''); setFlightNumber(''); setConfirmation(''); setSeat(''); setBookingClass('')
     setDepCode(''); setDepCity(''); setDepTime(''); setDepTerminal(''); setDepGate('')
     setArrCode(''); setArrCity(''); setArrTime(''); setArrTerminal(''); setArrGate('')
-    setPastedText('')
+    setPastedText(''); setCostAmount('')
   }
 
   const close = () => { reset(); onClose() }
@@ -90,8 +119,11 @@ export default function FlightImportModal({
         gate: arrGate.trim() || undefined,
       },
     }
+    const cost: Money | undefined = costAmount.trim()
+      ? { amount: Number(costAmount), currency: currency ?? initialCost?.currency ?? 'USD' }
+      : undefined
     close()
-    Promise.resolve(onSubmit(flight)).catch((e) => {
+    Promise.resolve(onSubmit(flight, cost)).catch((e) => {
       console.error(e); toast.error('Failed to save flight')
     })
   }
@@ -100,9 +132,21 @@ export default function FlightImportModal({
     <Modal
       open={open}
       onClose={close}
-      title="Add flight"
+      title={initialFlight ? 'Edit flight info' : 'Add flight'}
       footer={
         <>
+          {onDelete && (
+            <button
+              onClick={() => {
+                if (!confirm('Remove this flight activity?')) return
+                close()
+                Promise.resolve(onDelete()).catch((e) => { console.error(e); toast.error('Failed to delete flight') })
+              }}
+              className="mr-auto text-sm text-red-600 hover:underline"
+            >
+              Delete
+            </button>
+          )}
           <button onClick={close} className="rounded-lg border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50">Cancel</button>
           <button
             onClick={handleSave}
@@ -222,6 +266,17 @@ export default function FlightImportModal({
           </div>
           <Field label="Class">
             <input value={bookingClass} onChange={(e) => setBookingClass(e.target.value)} className="input" placeholder="Economy" />
+          </Field>
+          <Field label={`Cost${currency ? ` (${currency})` : ''}`}>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={costAmount}
+              onChange={(e) => setCostAmount(e.target.value)}
+              className="input"
+              placeholder="0.00"
+            />
           </Field>
         </div>
       )}

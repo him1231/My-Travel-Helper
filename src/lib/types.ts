@@ -59,8 +59,7 @@ export type Activity = {
   photos?: string[]
   route?: RouteInfo
   hotelCheckIn?: string // ISO date of the night stayed; presence signals a hotel-stay activity
-  flight?: FlightInfo
-}
+  flight?: FlightInfo  flightLeg?: 'departure' | 'arrival' // which leg this activity represents}
 
 export type Day = {
   id: string // ISO date "YYYY-MM-DD"

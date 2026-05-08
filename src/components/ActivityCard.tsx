@@ -1,4 +1,4 @@
-import { Clock, GripVertical, MapPin, Plane, StickyNote, Ticket, Truck, Wallet } from 'lucide-react'
+import { Clock, GripVertical, MapPin, Plane, PlaneLanding, PlaneTakeoff, StickyNote, Ticket, Truck, Wallet } from 'lucide-react'
 import clsx from 'clsx'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -74,7 +74,11 @@ export default function ActivityCard({
           <GripVertical className="h-4 w-4" />
         </button>
         <div className={`grid h-7 w-7 flex-shrink-0 place-items-center rounded-full text-xs font-bold text-white ${style_info.badge}`}>
-          {isFlight ? <Plane className="h-3.5 w-3.5" />
+          {isFlight ? (
+            a.flightLeg === 'arrival' ? <PlaneLanding className="h-3.5 w-3.5" />
+            : a.flightLeg === 'departure' ? <PlaneTakeoff className="h-3.5 w-3.5" />
+            : <Plane className="h-3.5 w-3.5" />
+          )
             : isHotel ? '🏨'
             : a.type === 'note' ? <StickyNote className="h-3.5 w-3.5" />
             : a.type === 'transport' ? <Truck className="h-3.5 w-3.5" />
@@ -82,7 +86,7 @@ export default function ActivityCard({
         </div>
         <div className="min-w-0 flex-1">
           {isFlight && a.flight ? (
-            <FlightSummary flight={a.flight} />
+            <FlightSummary flight={a.flight} leg={a.flightLeg} />
           ) : (
             <div className="font-medium text-slate-900">{a.title}</div>
           )}
@@ -126,7 +130,22 @@ export default function ActivityCard({
   )
 }
 
-function FlightSummary({ flight }: { flight: NonNullable<Activity['flight']> }) {
+function BookingMeta({ flight }: { flight: NonNullable<Activity['flight']> }) {
+  if (!flight.confirmation && !flight.seat && !flight.bookingClass) return null
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
+      {flight.confirmation && (
+        <span className="flex items-center gap-1">
+          <Ticket className="h-3 w-3" /> {flight.confirmation}
+        </span>
+      )}
+      {flight.seat && <span>Seat {flight.seat}</span>}
+      {flight.bookingClass && <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">{flight.bookingClass}</span>}
+    </div>
+  )
+}
+
+function FlightSummary({ flight, leg }: { flight: NonNullable<Activity['flight']>; leg?: Activity['flightLeg'] }) {
   const dep = flight.departure
   const arr = flight.arrival
   const depTime = timeOf(dep.time)
@@ -134,8 +153,39 @@ function FlightSummary({ flight }: { flight: NonNullable<Activity['flight']> }) 
   const overnight = overnightSuffix(dep.time, arr.time)
   const flightLabel = [flight.airline, flight.flightNumber].filter(Boolean).join(' · ') || 'Flight'
   const route = (dep.airportCode || '???') + ' → ' + (arr.airportCode || '???')
-  const timeRange = (depTime || '—:—') + ' → ' + (arrTime || '—:—') + overnight
 
+  if (leg === 'departure') {
+    return (
+      <>
+        <div className="font-medium text-slate-900">{flightLabel}</div>
+        <div className="mt-0.5 text-xs font-medium text-slate-700">{route}</div>
+        {depTime && (
+          <div className="mt-0.5 text-xs text-slate-500">
+            Departs {depTime}{dep.terminal ? ` · T${dep.terminal}` : ''}{dep.gate ? ` · Gate ${dep.gate}` : ''}
+          </div>
+        )}
+        <BookingMeta flight={flight} />
+      </>
+    )
+  }
+
+  if (leg === 'arrival') {
+    return (
+      <>
+        <div className="font-medium text-slate-900">{flightLabel}</div>
+        <div className="mt-0.5 text-xs font-medium text-slate-700">{route}</div>
+        {arrTime && (
+          <div className="mt-0.5 text-xs text-slate-500">
+            Arrives {arrTime}{overnight}{arr.terminal ? ` · T${arr.terminal}` : ''}{arr.gate ? ` · Gate ${arr.gate}` : ''}
+          </div>
+        )}
+        <BookingMeta flight={flight} />
+      </>
+    )
+  }
+
+  // Legacy: single activity showing full flight summary
+  const timeRange = (depTime || '—:—') + ' → ' + (arrTime || '—:—') + overnight
   return (
     <>
       <div className="font-medium text-slate-900">{flightLabel}</div>
@@ -149,17 +199,7 @@ function FlightSummary({ flight }: { flight: NonNullable<Activity['flight']> }) 
           {arr.terminal && <span>Arr T{arr.terminal}{arr.gate ? ` · Gate ${arr.gate}` : ''}</span>}
         </div>
       )}
-      {(flight.confirmation || flight.seat || flight.bookingClass) && (
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
-          {flight.confirmation && (
-            <span className="flex items-center gap-1">
-              <Ticket className="h-3 w-3" /> {flight.confirmation}
-            </span>
-          )}
-          {flight.seat && <span>Seat {flight.seat}</span>}
-          {flight.bookingClass && <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">{flight.bookingClass}</span>}
-        </div>
-      )}
+      <BookingMeta flight={flight} />
     </>
   )
 }

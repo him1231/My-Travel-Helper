@@ -25,7 +25,7 @@ import TimelineView from '@/components/TimelineView'
 import NearbyDrawer from '@/components/NearbyDrawer'
 import WeatherWidget from '@/components/WeatherWidget'
 import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, updateDayTitle, reorderActivities, reorderListActivities, reassignDayDates, updateActivity, removeActivity, moveActivityBetweenDays, subscribeScratchLists, addScratchList, renameScratchList, removeScratchList, addActivityToList, updateActivityInList, removeActivityFromList, moveBetweenDayAndList, moveFromListToDay, moveBetweenLists } from '@/lib/firestore/trips'
-import type { Trip, Day, Activity, FlightInfo, POI, ScratchList } from '@/lib/types'
+import type { Trip, Day, Activity, FlightInfo, Money, POI, ScratchList } from '@/lib/types'
 import { todayISO, addDaysISO, formatDateISO, formatMoney, exportIcal } from '@/lib/utils'
 
 function SectionHeader({
@@ -381,15 +381,18 @@ export default function TripDetail() {
     catch (e) { console.error(e); toast.error('Failed to add transport') }
   }
 
-  const handleAddFlight = async (flight: FlightInfo) => {
+  const handleAddFlight = async (flight: FlightInfo, cost?: Money) => {
     if (!tripId) return
     // Title: "AA 100 · JFK → LHR" or fallback
     const route = [flight.departure.airportCode, flight.arrival.airportCode].filter(Boolean).join(' → ')
     const titleParts = [flight.flightNumber || flight.airline, route].filter(Boolean)
     const title = titleParts.length > 0 ? titleParts.join(' · ') : 'Flight'
-    // Pull HH:mm and duration for sidebar display + iCal export
-    const startTime = flight.departure.time?.includes('T')
+
+    const depStartTime = flight.departure.time?.includes('T')
       ? flight.departure.time.split('T')[1].slice(0, 5)
+      : undefined
+    const arrStartTime = flight.arrival.time?.includes('T')
+      ? flight.arrival.time.split('T')[1].slice(0, 5)
       : undefined
     let durationMinutes: number | undefined
     if (flight.departure.time && flight.arrival.time) {
@@ -399,38 +402,90 @@ export default function TripDetail() {
       if (diff > 0 && diff < 60 * 48) durationMinutes = diff
     }
 
-    // Add to a scratch list when on the list tab — flights without a date can live there.
+    // Add to a scratch list — single combined activity (no date context)
     if (activeTabKind === 'list' && selectedList) {
       const activity: Activity = {
         id: nanoid(8), order: selectedList.activities.length,
-        type: 'flight', title, startTime, durationMinutes, flight,
+        type: 'flight', title, startTime: depStartTime, durationMinutes, flight, cost,
       }
       try { await addActivityToList(tripId, selectedList, activity) }
       catch (e) { console.error(e); toast.error('Failed to add flight') }
       return
     }
 
-    // Otherwise, place on the day matching the departure date — falling back to selectedDay.
+    // Resolve departure day — create if missing
     const departureDate = flight.departure.time?.split('T')[0]
-    let targetDay = departureDate ? days.find((d) => d.id === departureDate) : selectedDay
-    if (!targetDay && departureDate) {
-      // Departure date not in trip yet — create the day so the flight has a home.
+    let depDay = departureDate ? days.find((d) => d.id === departureDate) : selectedDay
+    if (!depDay && departureDate) {
       try { await addDay(tripId, departureDate) }
       catch (e) { console.error(e); toast.error('Failed to add day for flight'); return }
-      targetDay = { id: departureDate, date: departureDate, notes: '', activities: [] }
+      depDay = { id: departureDate, date: departureDate, notes: '', activities: [] }
     }
-    if (!targetDay) {
+    if (!depDay) {
       toast.error('Pick a day or set the departure time first')
       return
     }
-    const activity: Activity = {
-      id: nanoid(8), order: targetDay.activities.length,
-      type: 'flight', title, startTime, durationMinutes, flight,
+
+    // Resolve arrival day — may differ from departure (overnight flight)
+    const arrivalDate = flight.arrival.time?.split('T')[0]
+    const hasArrivalInfo = !!(flight.arrival.airportCode || flight.arrival.time || flight.arrival.city)
+    let arrDay: Day = depDay
+    if (hasArrivalInfo && arrivalDate && arrivalDate !== departureDate) {
+      const found = days.find((d) => d.id === arrivalDate)
+      if (found) {
+        arrDay = found
+      } else {
+        try { await addDay(tripId, arrivalDate) }
+        catch (e) { console.error(e); toast.error('Failed to add arrival day'); return }
+        arrDay = { id: arrivalDate, date: arrivalDate, notes: '', activities: [] }
+      }
     }
+
+    const depActivity: Activity = {
+      id: nanoid(8), order: depDay.activities.length,
+      type: 'flight', title, startTime: depStartTime, durationMinutes, flight, flightLeg: 'departure', cost,
+    }
+
     try {
-      await addActivity(tripId, targetDay, activity)
-      setSelectedDayId(targetDay.id)
+      await addActivity(tripId, depDay, depActivity)
+      // Only add arrival activity when there is meaningful arrival info
+      if (hasArrivalInfo) {
+        const arrActivity: Activity = {
+          id: nanoid(8),
+          order: arrDay === depDay ? depDay.activities.length + 1 : arrDay.activities.length,
+          type: 'flight', title, startTime: arrStartTime, flight, flightLeg: 'arrival',
+        }
+        await addActivity(tripId, arrDay, arrActivity)
+      }
+      setSelectedDayId(depDay.id)
     } catch (e) { console.error(e); toast.error('Failed to add flight') }
+  }
+
+  const handleSaveFlightEdit = async (flight: FlightInfo, cost?: Money) => {
+    if (!tripId || !editingActivity) return
+    const route = [flight.departure.airportCode, flight.arrival.airportCode].filter(Boolean).join(' → ')
+    const titleParts = [flight.flightNumber || flight.airline, route].filter(Boolean)
+    const title = titleParts.length > 0 ? titleParts.join(' · ') : 'Flight'
+    const leg = editingActivity.flightLeg
+    const startTime = leg === 'arrival'
+      ? (flight.arrival.time?.includes('T') ? flight.arrival.time.split('T')[1].slice(0, 5) : undefined)
+      : (flight.departure.time?.includes('T') ? flight.departure.time.split('T')[1].slice(0, 5) : undefined)
+    let durationMinutes: number | undefined
+    if (!leg || leg === 'departure') {
+      if (flight.departure.time && flight.arrival.time) {
+        const dep = new Date(flight.departure.time)
+        const arr = new Date(flight.arrival.time)
+        const diff = Math.round((arr.getTime() - dep.getTime()) / 60_000)
+        if (diff > 0 && diff < 60 * 48) durationMinutes = diff
+      }
+    }
+    const patch: Partial<Activity> = { title, flight, startTime, cost: cost ?? undefined }
+    if (durationMinutes != null) patch.durationMinutes = durationMinutes
+    try {
+      if (editingDay) await updateActivity(tripId, editingDay, editingActivity.id, patch)
+      else if (editingList) await updateActivityInList(tripId, editingList, editingActivity.id, patch)
+    } catch (e) { console.error(e); toast.error('Failed to save flight') }
+    setEditingActivityId(null)
   }
 
   const handleDayNotesChange = (value: string) => {
@@ -1234,7 +1289,7 @@ export default function TripDetail() {
         </button>
       </nav>
 
-      {(editingDay || editingList) && (
+      {(editingDay || editingList) && editingActivity?.type !== 'flight' && (
         <ActivityEditModal
           open={!!editingActivity}
           onClose={() => setEditingActivityId(null)}
@@ -1251,10 +1306,28 @@ export default function TripDetail() {
         />
       )}
 
+      {/* Flight edit modal — opens when clicking an existing flight activity */}
+      {(editingDay || editingList) && editingActivity?.type === 'flight' && (
+        <FlightImportModal
+          open={!!editingActivity}
+          onClose={() => setEditingActivityId(null)}
+          onSubmit={handleSaveFlightEdit}
+          initialFlight={editingActivity.flight}
+          initialCost={editingActivity.cost}
+          currency={trip.currency}
+          onDelete={async () => {
+            if (editingDay) await removeActivity(tripId, editingDay, editingActivity!.id)
+            else if (editingList) await removeActivityFromList(tripId, editingList, editingActivity!.id)
+            setEditingActivityId(null)
+          }}
+        />
+      )}
+
       <FlightImportModal
         open={flightModalOpen}
         onClose={() => setFlightModalOpen(false)}
         onSubmit={handleAddFlight}
+        currency={trip.currency}
       />
 
 
