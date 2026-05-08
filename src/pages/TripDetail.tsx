@@ -205,7 +205,7 @@ export default function TripDetail() {
     const reordered = arrayMove(localActivities, oldIdx, newIdx)
     setLocalActivities(reordered) // optimistic update
     try {
-      await reorderActivities(tripId, selectedDay, reordered.map((a) => a.id))
+      await reorderActivities(tripId, selectedDay.id, reordered.map((a) => a.id))
     } catch (e) {
       console.error(e)
       toast.error('Failed to reorder')
@@ -258,7 +258,7 @@ export default function TripDetail() {
           const distanceM = result.routes[0].legs[0].distance?.value
           const durationS = result.routes[0].legs[0].duration?.value
           try {
-            await updateActivity(tripId, selectedDay, activity.id, {
+            await updateActivity(tripId, selectedDay.id, activity.id, {
               route: { mode: 'drive', polyline, distanceM, durationS },
             })
           } catch (e) {
@@ -315,7 +315,7 @@ export default function TripDetail() {
   const handleAddPOI = async (poi: POI) => {
     if (activeTabKind === 'list' && selectedList && tripId) {
       const activity: Activity = { id: nanoid(8), order: selectedList.activities.length, type: 'poi', title: poi.name, poi }
-      try { await addActivityToList(tripId, selectedList, activity) } catch (e) { console.error(e); toast.error('Failed to add stop') }
+      try { await addActivityToList(tripId, selectedList.id, activity) } catch (e) { console.error(e); toast.error('Failed to add stop') }
       return
     }
     let day = selectedDay
@@ -337,7 +337,7 @@ export default function TripDetail() {
       poi,
     }
     try {
-      await addActivity(tripId, day, activity)
+      await addActivity(tripId, day.id, activity)
       setSelectedActivityId(activity.id)
     } catch (e) {
       console.error(e); toast.error('Failed to add stop')
@@ -347,24 +347,24 @@ export default function TripDetail() {
   const handleAddNote = async () => {
     if (activeTabKind === 'list' && selectedList && tripId) {
       const activity: Activity = { id: nanoid(8), order: selectedList.activities.length, type: 'note', title: 'Note', notes: '' }
-      try { await addActivityToList(tripId, selectedList, activity); setEditingActivityId(activity.id) } catch (e) { console.error(e) }
+      try { await addActivityToList(tripId, selectedList.id, activity); setEditingActivityId(activity.id) } catch (e) { console.error(e) }
       return
     }
     if (!tripId || !selectedDay) return
     const activity: Activity = { id: nanoid(8), order: selectedDay.activities.length, type: 'note', title: 'Note', notes: '' }
-    try { await addActivity(tripId, selectedDay, activity); setEditingActivityId(activity.id) }
+    try { await addActivity(tripId, selectedDay.id, activity); setEditingActivityId(activity.id) }
     catch (e) { console.error(e); toast.error('Failed to add note') }
   }
 
   const handleAddTransport = async () => {
     if (activeTabKind === 'list' && selectedList && tripId) {
       const activity: Activity = { id: nanoid(8), order: selectedList.activities.length, type: 'transport', title: 'Transport' }
-      try { await addActivityToList(tripId, selectedList, activity); setEditingActivityId(activity.id) } catch (e) { console.error(e) }
+      try { await addActivityToList(tripId, selectedList.id, activity); setEditingActivityId(activity.id) } catch (e) { console.error(e) }
       return
     }
     if (!tripId || !selectedDay) return
     const activity: Activity = { id: nanoid(8), order: selectedDay.activities.length, type: 'transport', title: 'Transport' }
-    try { await addActivity(tripId, selectedDay, activity); setEditingActivityId(activity.id) }
+    try { await addActivity(tripId, selectedDay.id, activity); setEditingActivityId(activity.id) }
     catch (e) { console.error(e); toast.error('Failed to add transport') }
   }
 
@@ -513,17 +513,14 @@ export default function TripDetail() {
     activityId: string,
     fromKind: 'day' | 'list', fromId: string,
     toKind: 'day' | 'list', toId: string,
+    toIndex?: number,
   ) => {
     if (fromKind === toKind && fromId === toId) return
     try {
-      const fromDay = fromKind === 'day' ? days.find((d) => d.id === fromId) : null
-      const toDay = toKind === 'day' ? days.find((d) => d.id === toId) : null
-      const fromList = fromKind === 'list' ? scratchLists.find((l) => l.id === fromId) : null
-      const toList = toKind === 'list' ? scratchLists.find((l) => l.id === toId) : null
-      if (fromDay && toDay) await moveActivityBetweenDays(tripId, fromDay, toDay, activityId)
-      else if (fromDay && toList) await moveBetweenDayAndList(tripId, fromDay, toList, activityId)
-      else if (fromList && toDay) await moveFromListToDay(tripId, fromList, toDay, activityId)
-      else if (fromList && toList) await moveBetweenLists(tripId, fromList, toList, activityId)
+      if (fromKind === 'day' && toKind === 'day') await moveActivityBetweenDays(tripId, fromId, toId, activityId, toIndex)
+      else if (fromKind === 'day' && toKind === 'list') await moveBetweenDayAndList(tripId, fromId, toId, activityId, toIndex)
+      else if (fromKind === 'list' && toKind === 'day') await moveFromListToDay(tripId, fromId, toId, activityId, toIndex)
+      else if (fromKind === 'list' && toKind === 'list') await moveBetweenLists(tripId, fromId, toId, activityId, toIndex)
     } catch (e) {
       console.error(e)
       toast.error('Failed to move activity')
@@ -724,13 +721,8 @@ export default function TripDetail() {
             onMoveActivity={handleMoveActivity}
             onReorderActivities={async (kind, containerId, orderedIds) => {
               try {
-                if (kind === 'day') {
-                  const day = days.find((d) => d.id === containerId)
-                  if (day) await reorderActivities(tripId, day, orderedIds)
-                } else {
-                  const list = scratchLists.find((l) => l.id === containerId)
-                  if (list) await reorderListActivities(tripId, list, orderedIds)
-                }
+                if (kind === 'day') await reorderActivities(tripId, containerId, orderedIds)
+                else await reorderListActivities(tripId, containerId, orderedIds)
               } catch (e) { console.error(e); toast.error('Failed to reorder') }
             }}
             onReorderDays={async (orderedIds) => {
@@ -1086,29 +1078,30 @@ export default function TripDetail() {
             allDays={days}
             scratchLists={scratchLists}
             onAddToList={async (poi, listId) => {
+              if (!tripId) return
               const list = scratchLists.find((l) => l.id === listId)
-              if (!list || !tripId) return
+              if (!list) return
               const activity: Activity = { id: nanoid(8), order: list.activities.length, type: 'poi', title: poi.name, poi }
-              try { await addActivityToList(tripId, list, activity) } catch (e) { console.error(e); toast.error('Failed to add to list') }
+              try { await addActivityToList(tripId, listId, activity) } catch (e) { console.error(e); toast.error('Failed to add to list') }
             }}
             onOptimizeRoute={async (orderedIds) => {
               if (!tripId || !selectedDay) return
               const map = new Map(localActivities.map((a) => [a.id, a]))
               const reordered = orderedIds.map((id, i) => ({ ...map.get(id)!, order: i })).filter(Boolean) as Activity[]
               setLocalActivities(reordered)
-              try { await reorderActivities(tripId, selectedDay, orderedIds) }
+              try { await reorderActivities(tripId, selectedDay.id, orderedIds) }
               catch (e) { console.error(e); toast.error('Optimize failed'); setLocalActivities(selectedDay.activities) }
             }}
             onAddHotel={async (poi, dayId) => {
+              if (!tripId) return
               const day = days.find((d) => d.id === dayId)
-              if (!day || !tripId) return
               const activity: Activity = {
-                id: nanoid(8), order: day.activities.length,
+                id: nanoid(8), order: day?.activities.length ?? 0,
                 type: 'poi', title: poi.name,
                 poi: { ...poi, category: 'hotel' },
                 hotelCheckIn: dayId,
               }
-              try { await addActivity(tripId, day, activity) }
+              try { await addActivity(tripId, dayId, activity) }
               catch (e) { console.error(e); toast.error('Failed to add hotel') }
             }}
           />
@@ -1147,12 +1140,12 @@ export default function TripDetail() {
           activity={editingActivity}
           currency={trip.currency}
           onSave={async (patch) => {
-            if (editingDay) await updateActivity(tripId, editingDay, editingActivity!.id, patch)
-            else if (editingList) await updateActivityInList(tripId, editingList, editingActivity!.id, patch)
+            if (editingDay) await updateActivity(tripId, editingDay.id, editingActivity!.id, patch)
+            else if (editingList) await updateActivityInList(tripId, editingList.id, editingActivity!.id, patch)
           }}
           onDelete={async () => {
-            if (editingDay) await removeActivity(tripId, editingDay, editingActivity!.id)
-            else if (editingList) await removeActivityFromList(tripId, editingList, editingActivity!.id)
+            if (editingDay) await removeActivity(tripId, editingDay.id, editingActivity!.id)
+            else if (editingList) await removeActivityFromList(tripId, editingList.id, editingActivity!.id)
           }}
         />
       )}
