@@ -68,6 +68,12 @@ export default function ActivityEditModal({
       if (activity.poi && category) {
         patch.poi = { ...activity.poi, category: category as ActivityCategory }
       }
+      // hotelCheckIn anchors a hotel-stay to its host day. If the user changes the
+      // category away from 'hotel', the anchor is no longer meaningful.
+      const wasHotel = activity.poi?.category === 'hotel' && !!activity.hotelCheckIn
+      if (wasHotel && category !== 'hotel') {
+        patch.hotelCheckIn = undefined
+      }
       if (activity.type === 'transport') {
         const prevMode = activity.route?.mode ?? 'straight'
         if (routeMode !== prevMode || !activity.route) {
