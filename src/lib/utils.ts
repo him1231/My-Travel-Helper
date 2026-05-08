@@ -1,16 +1,21 @@
+// All date helpers operate on naive ISO strings (YYYY-MM-DD) treated as
+// calendar dates without a timezone. We avoid Date.UTC roundtrips because
+// formatDateISO interprets the same string as a *local* date — mixing the
+// two conventions causes off-by-one errors near midnight in non-UTC zones.
+
+function pad2(n: number): string { return String(n).padStart(2, '0') }
+
 export function todayISO(): string {
   const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
 }
 
 export function addDaysISO(iso: string, days: number): string {
   const [y, m, d] = iso.split('-').map(Number)
-  const date = new Date(Date.UTC(y, m - 1, d))
-  date.setUTCDate(date.getUTCDate() + days)
-  return date.toISOString().slice(0, 10)
+  // Use a local Date and let it handle month/year rollover — toLocaleDateString
+  // and formatDateISO both parse YYYY-MM-DD as local, so we stay consistent.
+  const date = new Date(y, m - 1, d + days)
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
 }
 
 export function formatDateISO(iso: string, opts?: Intl.DateTimeFormatOptions): string {
