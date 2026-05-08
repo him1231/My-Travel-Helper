@@ -5,7 +5,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import type { Trip, Day, Activity, POI, ScratchList } from '@/lib/types'
-import { stripUndefinedDeep } from '@/lib/utils'
+import { stripUndefinedDeep, addDaysISO } from '@/lib/utils'
 
 const tripsCol = collection(db, 'trips')
 const daysCol = (tripId: string) => collection(db, 'trips', tripId, 'days')
@@ -42,13 +42,27 @@ export async function createTrip(uid: string, input: NewTripInput): Promise<stri
   })
 
   if (input.startDate) {
-    await setDoc(doc(daysCol(ref.id), input.startDate), {
-      date: input.startDate,
-      notes: '',
-      activities: [],
+    // Seed every day in the range so the day list matches the trip's stated span.
+    const dates = enumerateDates(input.startDate, input.endDate ?? input.startDate)
+    const batch = writeBatch(db)
+    dates.forEach((date) => {
+      batch.set(doc(daysCol(ref.id), date), { date, notes: '', activities: [] })
     })
+    await batch.commit()
   }
   return ref.id
+}
+
+// Inclusive range of YYYY-MM-DD dates from start..end. Returns empty if end < start.
+function enumerateDates(start: string, end: string): string[] {
+  const out: string[] = []
+  let cur = start
+  // Defensive cap so a malformed range doesn't loop forever.
+  for (let i = 0; i < 366 && cur <= end; i++) {
+    out.push(cur)
+    cur = addDaysISO(cur, 1)
+  }
+  return out
 }
 
 export function subscribeUserTrips(
