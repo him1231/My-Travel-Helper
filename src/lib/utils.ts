@@ -27,8 +27,29 @@ export function formatMoney(amount: number, currency: string): string {
   }
 }
 
+// Recursively removes undefined values from an object/array (Firestore writes
+// reject undefined). Preserves Date, Timestamp, and other non-plain-object
+// instances by reference — JSON.parse(JSON.stringify(...)) would mangle them.
 export function stripUndefinedDeep<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T
+  return strip(value) as T
+}
+
+function strip(value: unknown): unknown {
+  if (value === undefined) return undefined
+  if (value === null) return null
+  if (Array.isArray(value)) {
+    return value.map((v) => (v === undefined ? null : strip(v)))
+  }
+  if (typeof value !== 'object') return value
+  // Preserve class instances (Date, Timestamp, GeoPoint, etc.) — only walk plain objects
+  const proto = Object.getPrototypeOf(value)
+  if (proto !== Object.prototype && proto !== null) return value
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (v === undefined) continue
+    out[k] = strip(v)
+  }
+  return out
 }
 
 /**
