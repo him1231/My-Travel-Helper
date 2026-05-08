@@ -949,11 +949,22 @@ export default function TripDetail() {
         {/* Budget summary */}
           {activeTabKind === 'day' && days.length > 0 && (() => {
             const currency = trip.currency || 'USD'
+            // Only sum entries whose cost is in the trip currency. Mixed-currency
+            // costs would silently corrupt the total — flag them instead.
+            const inTripCurrency = (a: Activity) =>
+              a.cost && (a.cost.currency || currency) === currency
+            const otherCurrency = (a: Activity) =>
+              !!a.cost && a.cost.amount > 0 && a.cost.currency && a.cost.currency !== currency
             const allActivities = days.flatMap((d) => d.activities)
-            const tripTotal = allActivities.reduce((sum, a) => sum + (a.cost?.amount ?? 0), 0)
-            const dayTotal = (selectedDay?.activities ?? []).reduce((sum, a) => sum + (a.cost?.amount ?? 0), 0)
+            const tripTotal = allActivities
+              .filter(inTripCurrency)
+              .reduce((sum, a) => sum + (a.cost!.amount ?? 0), 0)
+            const dayTotal = (selectedDay?.activities ?? [])
+              .filter(inTripCurrency)
+              .reduce((sum, a) => sum + (a.cost!.amount ?? 0), 0)
+            const mixedCount = allActivities.filter(otherCurrency).length
             const budgetLimit = trip.budgetLimit?.amount
-            const hasAny = tripTotal > 0 || budgetLimit
+            const hasAny = tripTotal > 0 || budgetLimit || mixedCount > 0
             if (!hasAny) return null
             const overBudget = budgetLimit && tripTotal > budgetLimit
             const pct = budgetLimit ? Math.min(100, (tripTotal / budgetLimit) * 100) : 0
@@ -961,12 +972,16 @@ export default function TripDetail() {
               <div className="mt-4">
                 <SectionHeader title="Budget" open={budgetOpen} onToggle={() => setBudgetOpen((o) => !o)} badge={tripTotal > 0 ? formatMoney(tripTotal, currency) : undefined} />
               {budgetOpen && <div className="mt-2 rounded-lg border border-slate-200 bg-white p-3 text-xs">
-                {(selectedDay?.activities ?? []).filter((a) => (a.cost?.amount ?? 0) > 0).map((a) => (
-                  <div key={a.id} className="flex justify-between py-0.5 text-slate-600">
-                    <span className="truncate pr-2">{a.title}</span>
-                    <span className="flex-shrink-0 font-medium">{formatMoney(a.cost!.amount, a.cost!.currency || currency)}</span>
-                  </div>
-                ))}
+                {(selectedDay?.activities ?? []).filter((a) => (a.cost?.amount ?? 0) > 0).map((a) => {
+                  const cur = a.cost!.currency || currency
+                  const mismatch = cur !== currency
+                  return (
+                    <div key={a.id} className={`flex justify-between py-0.5 ${mismatch ? 'text-amber-600' : 'text-slate-600'}`}>
+                      <span className="truncate pr-2">{a.title}{mismatch ? ' ⚠' : ''}</span>
+                      <span className="flex-shrink-0 font-medium">{formatMoney(a.cost!.amount, cur)}</span>
+                    </div>
+                  )
+                })}
                 {selectedDay && dayTotal > 0 && (
                   <div className="mt-1 flex justify-between border-t border-slate-100 pt-1 font-semibold text-slate-700">
                     <span>Day total</span>
@@ -977,6 +992,11 @@ export default function TripDetail() {
                   <span>Trip total</span>
                   <span className={overBudget ? 'text-red-600' : ''}>{formatMoney(tripTotal, currency)}</span>
                 </div>
+                {mixedCount > 0 && (
+                  <div className="mt-1 text-[10px] text-amber-600">
+                    {mixedCount} cost{mixedCount === 1 ? '' : 's'} in another currency excluded from total.
+                  </div>
+                )}
                 {budgetLimit != null && (
                   <>
                     <div className="mt-1 flex justify-between text-slate-500">
