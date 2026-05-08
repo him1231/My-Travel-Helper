@@ -55,48 +55,45 @@ export default function ActivityEditModal({
     setPhotoInput('')
   }
 
-  const handleSave = async () => {
-    try {
-      const patch: Partial<Activity> = {
-        title: title.trim() || activity.title,
-        startTime: startTime || undefined,
-        durationMinutes: duration ? Number(duration) : undefined,
-        cost: costAmount ? { amount: Number(costAmount), currency } : undefined,
-        notes: notes || undefined,
-        photos: photos.length > 0 ? photos : undefined,
+  const handleSave = () => {
+    const patch: Partial<Activity> = {
+      title: title.trim() || activity.title,
+      startTime: startTime || undefined,
+      durationMinutes: duration ? Number(duration) : undefined,
+      cost: costAmount ? { amount: Number(costAmount), currency } : undefined,
+      notes: notes || undefined,
+      photos: photos.length > 0 ? photos : undefined,
+    }
+    if (activity.poi && category) {
+      patch.poi = { ...activity.poi, category: category as ActivityCategory }
+    }
+    // hotelCheckIn anchors a hotel-stay to its host day. If the user changes the
+    // category away from 'hotel', the anchor is no longer meaningful.
+    const wasHotel = activity.poi?.category === 'hotel' && !!activity.hotelCheckIn
+    if (wasHotel && category !== 'hotel') {
+      patch.hotelCheckIn = undefined
+    }
+    if (activity.type === 'transport') {
+      const prevMode = activity.route?.mode ?? 'straight'
+      if (routeMode !== prevMode || !activity.route) {
+        patch.route = { mode: routeMode } as RouteInfo
       }
-      if (activity.poi && category) {
-        patch.poi = { ...activity.poi, category: category as ActivityCategory }
-      }
-      // hotelCheckIn anchors a hotel-stay to its host day. If the user changes the
-      // category away from 'hotel', the anchor is no longer meaningful.
-      const wasHotel = activity.poi?.category === 'hotel' && !!activity.hotelCheckIn
-      if (wasHotel && category !== 'hotel') {
-        patch.hotelCheckIn = undefined
-      }
-      if (activity.type === 'transport') {
-        const prevMode = activity.route?.mode ?? 'straight'
-        if (routeMode !== prevMode || !activity.route) {
-          patch.route = { mode: routeMode } as RouteInfo
-        }
-      }
-      await onSave(patch)
-      onClose()
-    } catch (e) {
+    }
+    // Close immediately; the write is latency-compensated locally and toasts on rejection.
+    onClose()
+    onSave(patch).catch((e) => {
       toast.error('Save failed')
       console.error(e)
-    }
+    })
   }
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!confirm('Remove this activity?')) return
-    try {
-      await onDelete()
-      onClose()
-    } catch (e) {
+    onClose()
+    onDelete().catch((e) => {
       toast.error('Delete failed')
       console.error(e)
-    }
+    })
   }
 
   return (

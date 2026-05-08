@@ -1,7 +1,6 @@
 import {
   collection, doc, addDoc, deleteDoc, updateDoc, setDoc, getDocs,
-  query, where, orderBy, onSnapshot, serverTimestamp, writeBatch, deleteField, runTransaction,
-  type Transaction,
+  query, where, orderBy, onSnapshot, serverTimestamp, writeBatch, deleteField,
 } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import type { Trip, Day, Activity, POI, ScratchList } from '@/lib/types'
@@ -9,6 +8,7 @@ import { stripUndefinedDeep, addDaysISO } from '@/lib/utils'
 
 const tripsCol = collection(db, 'trips')
 const daysCol = (tripId: string) => collection(db, 'trips', tripId, 'days')
+const listsCol = (tripId: string) => collection(db, 'trips', tripId, 'lists')
 
 export type NewTripInput = {
   title: string
@@ -115,12 +115,6 @@ export async function updateTrip(tripId: string, patch: Partial<Trip>) {
 // Reorders day content (activities, title, notes) across the fixed date slots.
 // The date documents keep their existing IDs; the dragged content is written into
 // whichever date slot it now occupies in the sorted date sequence.
-// E.g. drag Day 5 (Mar 14) between Day 1 and Day 2:
-//   slot Mar 10 ← Day 1 content (unchanged)
-//   slot Mar 11 ← Day 5 content  ← moved here
-//   slot Mar 12 ← Day 2 content  ← shifted down
-//   slot Mar 13 ← Day 3 content
-//   slot Mar 14 ← Day 4 content
 export async function reassignDayDates(
   tripId: string,
   orderedDays: Day[],
@@ -153,7 +147,7 @@ export async function reassignDayDates(
   })
 
   batch.update(doc(tripsCol, tripId), {
-    dayOrder: deleteField(), // content is now in the correct date slots
+    dayOrder: deleteField(), // legacy field cleanup
     updatedAt: serverTimestamp(),
   })
 
@@ -206,93 +200,45 @@ export async function removeDay(tripId: string, dayId: string) {
   await batch.commit()
 }
 
-// ── Activity reads inside a transaction ───────────────────────────────────────
+// ── Day-activity writes ────────────────────────────────────────────────────────
+// Single-document writes use plain setDoc (no transactions) so Firestore's
+// latency-compensated cache makes the UI reflect changes immediately. This
+// trades strict concurrent-write protection for responsiveness — acceptable
+// since the app is mostly single-user per trip.
 
-async function readDayActivities(tx: Transaction, tripId: string, dayId: string): Promise<Activity[]> {
-  const snap = await tx.get(doc(daysCol(tripId), dayId))
-  if (!snap.exists()) return []
-  const data = snap.data() as Day
-  return [...(data.activities ?? [])]
+async function setDayActivities(tripId: string, dayId: string, activities: Activity[]): Promise<void> {
+  await setDoc(doc(daysCol(tripId), dayId), { activities: stripUndefinedDeep(activities) }, { merge: true })
 }
 
-async function readListActivities(tx: Transaction, tripId: string, listId: string): Promise<Activity[]> {
-  const snap = await tx.get(doc(listsCol(tripId), listId))
-  if (!snap.exists()) return []
-  const data = snap.data() as ScratchList
-  return [...(data.activities ?? [])]
+async function setListActivities(tripId: string, listId: string, activities: Activity[]): Promise<void> {
+  await setDoc(doc(listsCol(tripId), listId), { activities: stripUndefinedDeep(activities) }, { merge: true })
 }
 
-function writeDayActivities(tx: Transaction, tripId: string, dayId: string, activities: Activity[]) {
-  tx.set(doc(daysCol(tripId), dayId), { activities: stripUndefinedDeep(activities) }, { merge: true })
-}
-
-function writeListActivities(tx: Transaction, tripId: string, listId: string, activities: Activity[]) {
-  tx.set(doc(listsCol(tripId), listId), { activities: stripUndefinedDeep(activities) }, { merge: true })
-}
-
-// ── Day-activity writes (transactional) ────────────────────────────────────────
-
-export async function addActivity(tripId: string, dayId: string, activity: Activity): Promise<void> {
-  await runTransaction(db, async (tx) => {
-    const current = await readDayActivities(tx, tripId, dayId)
-    const next = [...current, { ...activity, order: current.length }]
-    writeDayActivities(tx, tripId, dayId, next)
-  })
+export async function addActivity(tripId: string, day: Day, activity: Activity): Promise<void> {
+  const next = [...day.activities, { ...activity, order: day.activities.length }]
+  await setDayActivities(tripId, day.id, next)
 }
 
 export async function updateActivity(
-  tripId: string, dayId: string, activityId: string, patch: Partial<Activity>,
+  tripId: string, day: Day, activityId: string, patch: Partial<Activity>,
 ): Promise<void> {
-  await runTransaction(db, async (tx) => {
-    const current = await readDayActivities(tx, tripId, dayId)
-    const next = current.map((a) => (a.id === activityId ? mergePatch(a, patch) : a))
-    writeDayActivities(tx, tripId, dayId, next)
-  })
+  const next = day.activities.map((a) => (a.id === activityId ? mergePatch(a, patch) : a))
+  await setDayActivities(tripId, day.id, next)
 }
 
-export async function removeActivity(tripId: string, dayId: string, activityId: string): Promise<void> {
-  await runTransaction(db, async (tx) => {
-    const current = await readDayActivities(tx, tripId, dayId)
-    const next = current.filter((a) => a.id !== activityId)
-    writeDayActivities(tx, tripId, dayId, next)
-  })
+export async function removeActivity(tripId: string, day: Day, activityId: string): Promise<void> {
+  const next = day.activities.filter((a) => a.id !== activityId)
+  await setDayActivities(tripId, day.id, next)
 }
 
 export async function reorderActivities(
-  tripId: string, dayId: string, orderedIds: string[],
+  tripId: string, day: Day, orderedIds: string[],
 ): Promise<void> {
-  await runTransaction(db, async (tx) => {
-    const current = await readDayActivities(tx, tripId, dayId)
-    const map = new Map(current.map((a) => [a.id, a]))
-    const next = orderedIds
-      .map((id, i) => { const a = map.get(id); return a ? { ...a, order: i } : null })
-      .filter((a): a is Activity => a !== null)
-    writeDayActivities(tx, tripId, dayId, next)
-  })
-}
-
-export async function moveActivityBetweenDays(
-  tripId: string, fromDayId: string, toDayId: string, activityId: string, toIndex?: number,
-): Promise<void> {
-  if (fromDayId === toDayId) return
-  await runTransaction(db, async (tx) => {
-    const fromList = await readDayActivities(tx, tripId, fromDayId)
-    const toList = await readDayActivities(tx, tripId, toDayId)
-    const activity = fromList.find((a) => a.id === activityId)
-    if (!activity) return
-    const moved: Activity = {
-      ...activity,
-      // hotelCheckIn references its host day; rewrite when moving to a new day.
-      ...(activity.hotelCheckIn ? { hotelCheckIn: toDayId } : {}),
-    }
-    const fromNext = fromList.filter((a) => a.id !== activityId)
-    const insertAt = clampIndex(toIndex, toList.length)
-    const toNext = [...toList.slice(0, insertAt), moved, ...toList.slice(insertAt)]
-      .map((a, i) => ({ ...a, order: i }))
-    const fromReindexed = fromNext.map((a, i) => ({ ...a, order: i }))
-    writeDayActivities(tx, tripId, fromDayId, fromReindexed)
-    writeDayActivities(tx, tripId, toDayId, toNext)
-  })
+  const map = new Map(day.activities.map((a) => [a.id, a]))
+  const next = orderedIds
+    .map((id, i) => { const a = map.get(id); return a ? { ...a, order: i } : null })
+    .filter((a): a is Activity => a !== null)
+  await setDayActivities(tripId, day.id, next)
 }
 
 export async function getTripByShareToken(token: string): Promise<Trip | null> {
@@ -312,9 +258,7 @@ export async function getDaysForTrip(tripId: string): Promise<Day[]> {
   })
 }
 
-// ── Scratch Lists ──────────────────────────────────────────────────────────
-
-const listsCol = (tripId: string) => collection(db, 'trips', tripId, 'lists')
+// ── Scratch Lists ──────────────────────────────────────────────────────────────
 
 export function subscribeScratchLists(tripId: string, cb: (lists: ScratchList[]) => void) {
   return onSnapshot(
@@ -341,106 +285,111 @@ export async function removeScratchList(tripId: string, listId: string): Promise
 }
 
 export async function addActivityToList(
-  tripId: string, listId: string, activity: Activity,
+  tripId: string, list: ScratchList, activity: Activity,
 ): Promise<void> {
-  await runTransaction(db, async (tx) => {
-    const current = await readListActivities(tx, tripId, listId)
-    const next = [...current, { ...activity, order: current.length }]
-    writeListActivities(tx, tripId, listId, next)
-  })
+  const next = [...list.activities, { ...activity, order: list.activities.length }]
+  await setListActivities(tripId, list.id, next)
 }
 
 export async function updateActivityInList(
-  tripId: string, listId: string, activityId: string, patch: Partial<Activity>,
+  tripId: string, list: ScratchList, activityId: string, patch: Partial<Activity>,
 ): Promise<void> {
-  await runTransaction(db, async (tx) => {
-    const current = await readListActivities(tx, tripId, listId)
-    const next = current.map((a) => (a.id === activityId ? mergePatch(a, patch) : a))
-    writeListActivities(tx, tripId, listId, next)
-  })
+  const next = list.activities.map((a) => (a.id === activityId ? mergePatch(a, patch) : a))
+  await setListActivities(tripId, list.id, next)
 }
 
 export async function removeActivityFromList(
-  tripId: string, listId: string, activityId: string,
+  tripId: string, list: ScratchList, activityId: string,
 ): Promise<void> {
-  await runTransaction(db, async (tx) => {
-    const current = await readListActivities(tx, tripId, listId)
-    const next = current.filter((a) => a.id !== activityId)
-    writeListActivities(tx, tripId, listId, next)
-  })
+  const next = list.activities.filter((a) => a.id !== activityId)
+  await setListActivities(tripId, list.id, next)
 }
 
 export async function reorderListActivities(
-  tripId: string, listId: string, orderedIds: string[],
+  tripId: string, list: ScratchList, orderedIds: string[],
 ): Promise<void> {
-  await runTransaction(db, async (tx) => {
-    const current = await readListActivities(tx, tripId, listId)
-    const map = new Map(current.map((a) => [a.id, a]))
-    const next = orderedIds
-      .map((id, i) => { const a = map.get(id); return a ? { ...a, order: i } : null })
-      .filter((a): a is Activity => a !== null)
-    writeListActivities(tx, tripId, listId, next)
-  })
+  const map = new Map(list.activities.map((a) => [a.id, a]))
+  const next = orderedIds
+    .map((id, i) => { const a = map.get(id); return a ? { ...a, order: i } : null })
+    .filter((a): a is Activity => a !== null)
+  await setListActivities(tripId, list.id, next)
+}
+
+// ── Cross-document moves (writeBatch — atomic for writes, latency-compensated) ─
+
+export async function moveActivityBetweenDays(
+  tripId: string, fromDay: Day, toDay: Day, activityId: string, toIndex?: number,
+): Promise<void> {
+  if (fromDay.id === toDay.id) return
+  const activity = fromDay.activities.find((a) => a.id === activityId)
+  if (!activity) return
+  const moved: Activity = {
+    ...activity,
+    // hotelCheckIn references its host day; rewrite when moving to a new day.
+    ...(activity.hotelCheckIn ? { hotelCheckIn: toDay.id } : {}),
+  }
+  const fromNext = fromDay.activities.filter((a) => a.id !== activityId).map((a, i) => ({ ...a, order: i }))
+  const insertAt = clampIndex(toIndex, toDay.activities.length)
+  const toNext = [...toDay.activities.slice(0, insertAt), moved, ...toDay.activities.slice(insertAt)]
+    .map((a, i) => ({ ...a, order: i }))
+  const batch = writeBatch(db)
+  batch.set(doc(daysCol(tripId), fromDay.id), { activities: stripUndefinedDeep(fromNext) }, { merge: true })
+  batch.set(doc(daysCol(tripId), toDay.id), { activities: stripUndefinedDeep(toNext) }, { merge: true })
+  await batch.commit()
 }
 
 export async function moveBetweenDayAndList(
-  tripId: string, fromDayId: string, toListId: string, activityId: string, toIndex?: number,
+  tripId: string, fromDay: Day, toList: ScratchList, activityId: string, toIndex?: number,
 ): Promise<void> {
-  await runTransaction(db, async (tx) => {
-    const fromList = await readDayActivities(tx, tripId, fromDayId)
-    const toList = await readListActivities(tx, tripId, toListId)
-    const activity = fromList.find((a) => a.id === activityId)
-    if (!activity) return
-    // Strip hotelCheckIn — a scratch list isn't a day, so the day-id reference is meaningless there.
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { hotelCheckIn: _drop, ...rest } = activity
-    const moved: Activity = rest as Activity
-    const fromNext = fromList.filter((a) => a.id !== activityId).map((a, i) => ({ ...a, order: i }))
-    const insertAt = clampIndex(toIndex, toList.length)
-    const toNext = [...toList.slice(0, insertAt), moved, ...toList.slice(insertAt)]
-      .map((a, i) => ({ ...a, order: i }))
-    writeDayActivities(tx, tripId, fromDayId, fromNext)
-    writeListActivities(tx, tripId, toListId, toNext)
-  })
+  const activity = fromDay.activities.find((a) => a.id === activityId)
+  if (!activity) return
+  // Strip hotelCheckIn — a scratch list isn't a day, so the day-id reference is meaningless there.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { hotelCheckIn: _drop, ...rest } = activity
+  const moved: Activity = rest as Activity
+  const fromNext = fromDay.activities.filter((a) => a.id !== activityId).map((a, i) => ({ ...a, order: i }))
+  const insertAt = clampIndex(toIndex, toList.activities.length)
+  const toNext = [...toList.activities.slice(0, insertAt), moved, ...toList.activities.slice(insertAt)]
+    .map((a, i) => ({ ...a, order: i }))
+  const batch = writeBatch(db)
+  batch.set(doc(daysCol(tripId), fromDay.id), { activities: stripUndefinedDeep(fromNext) }, { merge: true })
+  batch.set(doc(listsCol(tripId), toList.id), { activities: stripUndefinedDeep(toNext) }, { merge: true })
+  await batch.commit()
 }
 
 export async function moveFromListToDay(
-  tripId: string, fromListId: string, toDayId: string, activityId: string, toIndex?: number,
+  tripId: string, fromList: ScratchList, toDay: Day, activityId: string, toIndex?: number,
 ): Promise<void> {
-  await runTransaction(db, async (tx) => {
-    const fromList = await readListActivities(tx, tripId, fromListId)
-    const toList = await readDayActivities(tx, tripId, toDayId)
-    const activity = fromList.find((a) => a.id === activityId)
-    if (!activity) return
-    const moved: Activity = {
-      ...activity,
-      ...(activity.hotelCheckIn ? { hotelCheckIn: toDayId } : {}),
-    }
-    const fromNext = fromList.filter((a) => a.id !== activityId).map((a, i) => ({ ...a, order: i }))
-    const insertAt = clampIndex(toIndex, toList.length)
-    const toNext = [...toList.slice(0, insertAt), moved, ...toList.slice(insertAt)]
-      .map((a, i) => ({ ...a, order: i }))
-    writeListActivities(tx, tripId, fromListId, fromNext)
-    writeDayActivities(tx, tripId, toDayId, toNext)
-  })
+  const activity = fromList.activities.find((a) => a.id === activityId)
+  if (!activity) return
+  const moved: Activity = {
+    ...activity,
+    ...(activity.hotelCheckIn ? { hotelCheckIn: toDay.id } : {}),
+  }
+  const fromNext = fromList.activities.filter((a) => a.id !== activityId).map((a, i) => ({ ...a, order: i }))
+  const insertAt = clampIndex(toIndex, toDay.activities.length)
+  const toNext = [...toDay.activities.slice(0, insertAt), moved, ...toDay.activities.slice(insertAt)]
+    .map((a, i) => ({ ...a, order: i }))
+  const batch = writeBatch(db)
+  batch.set(doc(listsCol(tripId), fromList.id), { activities: stripUndefinedDeep(fromNext) }, { merge: true })
+  batch.set(doc(daysCol(tripId), toDay.id), { activities: stripUndefinedDeep(toNext) }, { merge: true })
+  await batch.commit()
 }
 
 export async function moveBetweenLists(
-  tripId: string, fromListId: string, toListId: string, activityId: string, toIndex?: number,
+  tripId: string, fromList: ScratchList, toList: ScratchList, activityId: string, toIndex?: number,
 ): Promise<void> {
-  if (fromListId === toListId) return
-  await runTransaction(db, async (tx) => {
-    const fromList = await readListActivities(tx, tripId, fromListId)
-    const toList = await readListActivities(tx, tripId, toListId)
-    const activity = fromList.find((a) => a.id === activityId)
-    if (!activity) return
-    const fromNext = fromList.filter((a) => a.id !== activityId).map((a, i) => ({ ...a, order: i }))
-    const insertAt = clampIndex(toIndex, toList.length)
-    const toNext = [...toList.slice(0, insertAt), activity, ...toList.slice(insertAt)]
-      .map((a, i) => ({ ...a, order: i }))
-    writeListActivities(tx, tripId, fromListId, fromNext)
-    writeListActivities(tx, tripId, toListId, toNext)
-  })
+  if (fromList.id === toList.id) return
+  const activity = fromList.activities.find((a) => a.id === activityId)
+  if (!activity) return
+  const fromNext = fromList.activities.filter((a) => a.id !== activityId).map((a, i) => ({ ...a, order: i }))
+  const insertAt = clampIndex(toIndex, toList.activities.length)
+  const toNext = [...toList.activities.slice(0, insertAt), activity, ...toList.activities.slice(insertAt)]
+    .map((a, i) => ({ ...a, order: i }))
+  const batch = writeBatch(db)
+  batch.set(doc(listsCol(tripId), fromList.id), { activities: stripUndefinedDeep(fromNext) }, { merge: true })
+  batch.set(doc(listsCol(tripId), toList.id), { activities: stripUndefinedDeep(toNext) }, { merge: true })
+  await batch.commit()
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────────
