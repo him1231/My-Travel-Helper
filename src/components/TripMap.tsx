@@ -168,6 +168,8 @@ function TripMapInner({
 
   // transport polylines (existing)
   const segments = useMemo<Segment[]>(() => {
+    const neighborKey = (prev: POI, next: POI) =>
+      `${prev.lat.toFixed(5)},${prev.lng.toFixed(5)}|${next.lat.toFixed(5)},${next.lng.toFixed(5)}`
     const result: Segment[] = []
     for (let i = 0; i < activities.length; i++) {
       const a = activities[i]
@@ -177,7 +179,12 @@ function TripMapInner({
       for (let j = i + 1; j < activities.length; j++) { if (activities[j].poi) { next = activities[j].poi; break } }
       if (!prev || !next) continue
       const mode = a.route?.mode ?? 'straight'
-      const path = (mode === 'drive' && a.route?.polyline?.length) ? a.route.polyline
+      const wantKey = neighborKey(prev, next)
+      const cachedFresh = mode === 'drive'
+        && a.route?.polyline?.length
+        && a.route.cacheKey === wantKey
+      const path = cachedFresh
+        ? a.route!.polyline!
         : [{ lat: prev.lat, lng: prev.lng }, { lat: next.lat, lng: next.lng }]
       result.push({ path, mode })
     }

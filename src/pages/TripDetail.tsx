@@ -215,28 +215,39 @@ export default function TripDetail() {
 
   const activeActivities = activeTabKind === 'list' ? (selectedList?.activities ?? []) : localActivities
 
-  // Auto-fetch drive routes for transport activities that have mode=drive but no polyline yet
+  // Auto-fetch drive routes for transport activities that have mode=drive but no polyline,
+  // or whose cached polyline was computed against different neighbors.
   useEffect(() => {
     if (!tripId || !selectedDay) return
-    const pending = selectedDay.activities.filter(
-      (a) => a.type === 'transport' && a.route?.mode === 'drive' && !a.route.polyline,
-    )
-    if (pending.length === 0) return
     if (typeof google === 'undefined' || !google.maps?.DirectionsService) return
 
-    pending.forEach((activity) => {
-      if (fetchingRoutesRef.current.has(activity.id)) return
-      const idx = selectedDay.activities.indexOf(activity)
-      let prevPOI: POI | undefined
-      for (let j = idx - 1; j >= 0; j--) {
-        if (selectedDay.activities[j].poi) { prevPOI = selectedDay.activities[j].poi; break }
-      }
-      let nextPOI: POI | undefined
-      for (let j = idx + 1; j < selectedDay.activities.length; j++) {
-        if (selectedDay.activities[j].poi) { nextPOI = selectedDay.activities[j].poi; break }
-      }
-      if (!prevPOI || !nextPOI) return
+    const neighborKey = (prev: POI, next: POI) =>
+      `${prev.lat.toFixed(5)},${prev.lng.toFixed(5)}|${next.lat.toFixed(5)},${next.lng.toFixed(5)}`
 
+    const pending = selectedDay.activities
+      .map((activity) => {
+        if (activity.type !== 'transport' || activity.route?.mode !== 'drive') return null
+        const idx = selectedDay.activities.indexOf(activity)
+        let prevPOI: POI | undefined
+        for (let j = idx - 1; j >= 0; j--) {
+          if (selectedDay.activities[j].poi) { prevPOI = selectedDay.activities[j].poi; break }
+        }
+        let nextPOI: POI | undefined
+        for (let j = idx + 1; j < selectedDay.activities.length; j++) {
+          if (selectedDay.activities[j].poi) { nextPOI = selectedDay.activities[j].poi; break }
+        }
+        if (!prevPOI || !nextPOI) return null
+        const wantKey = neighborKey(prevPOI, nextPOI)
+        const cached = activity.route?.polyline && activity.route?.cacheKey === wantKey
+        if (cached) return null
+        return { activity, prevPOI, nextPOI, wantKey }
+      })
+      .filter((p): p is { activity: Activity; prevPOI: POI; nextPOI: POI; wantKey: string } => !!p)
+
+    if (pending.length === 0) return
+
+    pending.forEach(({ activity, prevPOI, nextPOI, wantKey }) => {
+      if (fetchingRoutesRef.current.has(activity.id)) return
       fetchingRoutesRef.current.add(activity.id)
       const ds = new google.maps.DirectionsService()
       ds.route(
@@ -259,7 +270,7 @@ export default function TripDetail() {
           const durationS = result.routes[0].legs[0].duration?.value
           try {
             await updateActivity(tripId, selectedDay.id, activity.id, {
-              route: { mode: 'drive', polyline, distanceM, durationS },
+              route: { mode: 'drive', polyline, distanceM, durationS, cacheKey: wantKey },
             })
           } catch (e) {
             console.error('Failed to save drive route', e)

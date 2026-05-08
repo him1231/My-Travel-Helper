@@ -21,6 +21,9 @@ export type RouteInfo = {
   polyline?: { lat: number; lng: number }[]
   distanceM?: number
   durationS?: number
+  // Signature of the prev/next POIs the polyline was computed against.
+  // Used to invalidate cached polylines when neighbors change (reorder, insert, delete).
+  cacheKey?: string
 }
 
 export type Activity = {
