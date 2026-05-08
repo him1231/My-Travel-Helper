@@ -107,6 +107,9 @@ type Props = {
   onOptimizeRoute?: (orderedIds: string[]) => void
   onAddHotel?: (poi: POI, dayId: string) => void
   previewPOI?: POI | null
+  // Called once the previewPOI has been consumed (sheet shown) so the parent can
+  // reset its state and allow re-selecting the same POI.
+  onPreviewConsumed?: () => void
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -137,7 +140,7 @@ export default function TripMap(props: Props) {
 
 function TripMapInner({
   activities, selectedId, onSelectActivity, fallbackCenter,
-  onAddPOI, allDays, scratchLists, onAddToList, onOptimizeRoute, onAddHotel, previewPOI,
+  onAddPOI, allDays, scratchLists, onAddToList, onOptimizeRoute, onAddHotel, previewPOI, onPreviewConsumed,
 }: Props) {
   const [mapPOI, setMapPOI]           = useState<POI | null>(null)
   const [nearbyPOIs, setNearbyPOIs]   = useState<POI[]>([])
@@ -153,8 +156,11 @@ function TripMapInner({
   const [hotelPickerOpen, setHotelPickerOpen] = useState(false)
 
   useEffect(() => {
-    if (previewPOI) { setMapPOI(previewPOI); setNearbyPOIs([]); setListOpen(false) }
-  }, [previewPOI])
+    if (previewPOI) {
+      setMapPOI(previewPOI); setNearbyPOIs([]); setListOpen(false)
+      onPreviewConsumed?.()
+    }
+  }, [previewPOI, onPreviewConsumed])
 
   const addedPlaceIds = useMemo(
     () => new Set(activities.filter((a) => a.poi?.placeId).map((a) => a.poi!.placeId!)),

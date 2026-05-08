@@ -1085,6 +1085,7 @@ export default function TripDetail() {
             fallbackCenter={trip.destination ? { lat: trip.destination.lat, lng: trip.destination.lng } : undefined}
             onAddPOI={handleAddPOI}
             previewPOI={mapPreviewPOI}
+            onPreviewConsumed={() => setMapPreviewPOI(null)}
             allDays={days}
             scratchLists={scratchLists}
             onAddToList={async (poi, listId) => {
