@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Calendar, MapPin } from 'lucide-react'
 import TripMap from '@/components/TripMap'
-import { getTripByShareToken, getDaysForTrip } from '@/lib/firestore/trips'
+import { getTripByShareToken, subscribeTrip, subscribeDays } from '@/lib/firestore/trips'
 import type { Trip, Day } from '@/lib/types'
 import { formatDateISO, formatMoney } from '@/lib/utils'
 
@@ -16,16 +16,34 @@ export default function Shared() {
 
   useEffect(() => {
     if (!token) return
+    let unsubTrip: (() => void) | null = null
+    let unsubDays: (() => void) | null = null
+    let cancelled = false
+
     getTripByShareToken(token)
-      .then(async (t) => {
+      .then((t) => {
+        if (cancelled) return
         if (!t) { setNotFound(true); setLoading(false); return }
-        setTrip(t)
-        const d = await getDaysForTrip(t.id)
-        setDays(d)
-        if (d.length > 0) setSelectedDayId(d[0].id)
-        setLoading(false)
+        // Subscribe live so token revocation by the owner kicks the viewer out.
+        unsubTrip = subscribeTrip(t.id, (live) => {
+          if (!live || live.shareToken !== token) {
+            setTrip(null); setNotFound(true); setLoading(false)
+            return
+          }
+          setTrip(live); setLoading(false)
+        })
+        unsubDays = subscribeDays(t.id, (d) => {
+          setDays(d)
+          setSelectedDayId((cur) => cur ?? d[0]?.id ?? null)
+        })
       })
-      .catch(() => { setNotFound(true); setLoading(false) })
+      .catch(() => { if (!cancelled) { setNotFound(true); setLoading(false) } })
+
+    return () => {
+      cancelled = true
+      unsubTrip?.()
+      unsubDays?.()
+    }
   }, [token])
 
   if (loading) {
