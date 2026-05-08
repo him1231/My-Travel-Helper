@@ -57,6 +57,24 @@ export default function OverviewView({ days, scratchLists, initialView, onMoveAc
   const [activeDayId, setActiveDayId] = useState<string | null>(null)
   const isDraggingDay = useRef(false)
   const isDraggingActivity = useRef(false)
+  // Watchdog: if a drag-end write hangs, snapshot suppression should not last forever
+  // — otherwise local state can drift from server indefinitely.
+  const dragWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const armDragWatchdog = (kind: 'activity' | 'day') => {
+    if (dragWatchdogRef.current) clearTimeout(dragWatchdogRef.current)
+    dragWatchdogRef.current = setTimeout(() => {
+      if (kind === 'activity') isDraggingActivity.current = false
+      else isDraggingDay.current = false
+      dragWatchdogRef.current = null
+    }, 10_000)
+  }
+  const disarmDragWatchdog = () => {
+    if (dragWatchdogRef.current) {
+      clearTimeout(dragWatchdogRef.current)
+      dragWatchdogRef.current = null
+    }
+  }
+  useEffect(() => () => disarmDragWatchdog(), [])
   // Source container captured at drag start (active.id no longer encodes it,
   // because we use a stable activity.id sortable id so dnd-kit can keep
   // tracking the draggable across cross-column re-mounts during preview).
@@ -123,12 +141,14 @@ export default function OverviewView({ days, scratchLists, initialView, onMoveAc
     const id = e.active.id as string
     if (id.startsWith(DAY_COL_PREFIX)) {
       isDraggingDay.current = true
+      armDragWatchdog('day')
       setActiveDayId(id.slice(DAY_COL_PREFIX.length))
       return
     }
     // Activity drag — id is just activity.id; locate its source column
     const activityId = id
     isDraggingActivity.current = true
+    armDragWatchdog('activity')
     setActiveActivityId(activityId)
     let src: { kind: 'day' | 'list'; id: string } | null = null
     for (const day of days) {
@@ -240,6 +260,7 @@ export default function OverviewView({ days, scratchLists, initialView, onMoveAc
     // Day column reorder — read from ref to get the latest order set during handleDragOver
     if (dragId.startsWith(DAY_COL_PREFIX)) {
       isDraggingDay.current = false
+      disarmDragWatchdog()
       setActiveDayId(null)
       const finalIds = localDayIdsRef.current.slice()
       try {
@@ -259,6 +280,7 @@ export default function OverviewView({ days, scratchLists, initialView, onMoveAc
 
     if (!e.over || !source) {
       isDraggingActivity.current = false
+      disarmDragWatchdog()
       setLocalColumns(serverColumns)
       return
     }
@@ -268,6 +290,7 @@ export default function OverviewView({ days, scratchLists, initialView, onMoveAc
     const resolved = resolveOver(overId, localColumns)
     if (!resolved) {
       isDraggingActivity.current = false
+      disarmDragWatchdog()
       setLocalColumns(serverColumns)
       return
     }
@@ -291,6 +314,7 @@ export default function OverviewView({ days, scratchLists, initialView, onMoveAc
       setLocalColumns(serverColumns) // rollback
     } finally {
       isDraggingActivity.current = false
+      disarmDragWatchdog()
     }
   }
 
