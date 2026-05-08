@@ -73,7 +73,16 @@ export function exportIcal(tripTitle: string, days: import('./types').Day[]): vo
     return chunks.join('\r\n')
   }
 
+  // DTSTAMP must be UTC per iCal spec; use Z suffix.
   const stamp = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15) + 'Z'
+
+  // Activity start times are wall-clock at the destination — emit them as
+  // "floating" local time (no Z, no TZID). RFC 5545 §3.3.5 specifies that
+  // floating times are interpreted in the calendar consumer's local zone,
+  // which matches user expectation: "09:00 in Tokyo on day 3" should display
+  // as 09:00 wherever the user opens the calendar.
+  const formatFloatingDt = (y: number, mo: number, d: number, h: number, m: number) =>
+    `${y}${pad2(mo)}${pad2(d)}T${pad2(h)}${pad2(m)}00`
 
   const veventLines: string[] = []
 
@@ -82,12 +91,17 @@ export function exportIcal(tripTitle: string, days: import('./types').Day[]): vo
       if (!a.startTime) continue
       const [h, m] = a.startTime.split(':').map(Number)
       const [y, mo, d] = day.date.split('-').map(Number)
+      const durationMin = a.durationMinutes ?? 30
 
-      const startDate = new Date(Date.UTC(y, mo - 1, d, h, m))
-      const endDate = new Date(startDate.getTime() + (a.durationMinutes ?? 30) * 60_000)
+      // Compute end via local Date to handle rollover past midnight.
+      const startLocal = new Date(y, mo - 1, d, h, m)
+      const endLocal = new Date(startLocal.getTime() + durationMin * 60_000)
 
-      const formatDt = (dt: Date) =>
-        dt.toISOString().replace(/[-:.]/g, '').slice(0, 15) + 'Z'
+      const dtStart = formatFloatingDt(y, mo, d, h, m)
+      const dtEnd = formatFloatingDt(
+        endLocal.getFullYear(), endLocal.getMonth() + 1, endLocal.getDate(),
+        endLocal.getHours(), endLocal.getMinutes(),
+      )
 
       const uid = `${a.id}@my-travel-helper`
       const location = a.poi?.address ?? a.poi?.name ?? ''
@@ -96,8 +110,8 @@ export function exportIcal(tripTitle: string, days: import('./types').Day[]): vo
         'BEGIN:VEVENT',
         foldLine(`UID:${uid}`),
         foldLine(`DTSTAMP:${stamp}`),
-        foldLine(`DTSTART:${formatDt(startDate)}`),
-        foldLine(`DTEND:${formatDt(endDate)}`),
+        foldLine(`DTSTART:${dtStart}`),
+        foldLine(`DTEND:${dtEnd}`),
         foldLine(`SUMMARY:${escape(a.title)}`),
         ...(location ? [foldLine(`LOCATION:${escape(location)}`)] : []),
         ...(a.notes ? [foldLine(`DESCRIPTION:${escape(a.notes)}`)] : []),
