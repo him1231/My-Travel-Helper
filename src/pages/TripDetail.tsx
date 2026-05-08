@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { nanoid } from 'nanoid'
-import { ChevronDown, ChevronLeft, Calendar, Cloud, Compass, Image as ImageIcon, LayoutGrid, LayoutList, Link2, LogOut, Map as MapIcon, MapPin, Plus, Printer, StickyNote, Clock, UserPlus, X } from 'lucide-react'
+import { ChevronDown, ChevronLeft, Calendar, Cloud, Compass, GripVertical, Image as ImageIcon, LayoutGrid, LayoutList, Link2, LogOut, Map as MapIcon, MapPin, Plus, Printer, StickyNote, Clock, UserPlus, X } from 'lucide-react'
 import Modal from '@/components/Modal'
 import type { DayTabConfig } from '@/components/DayTabs'
 import { DEFAULT_DAY_TAB_CONFIG } from '@/components/DayTabs'
@@ -10,7 +10,8 @@ import {
   DndContext, PointerSensor, useSensor, useSensors,
   type DragEndEvent, closestCenter,
 } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
+import { SortableContext, verticalListSortingStrategy, arrayMove, useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { collection, getDocs, query, where } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useAuth } from '@/hooks/useAuth'
@@ -72,6 +73,7 @@ export default function TripDetail() {
   const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Optimistic local copy of activities for smooth DnD
   const [localActivities, setLocalActivities] = useState<Activity[]>([])
+  const [localListActivities, setLocalListActivities] = useState<Activity[]>([])
   const [categoryFilter, setCategoryFilter] = useState<string>('')
   const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list')
   const [nearbyOpen, setNearbyOpen] = useState(false)
@@ -198,9 +200,33 @@ export default function TripDetail() {
     setLocalActivities(selectedDay?.activities ?? [])
   }, [selectedDay?.activities, activeTabKind])
 
+  useEffect(() => {
+    if (activeTabKind !== 'list') return
+    setLocalListActivities(selectedList?.activities ?? [])
+  }, [selectedList?.activities, activeTabKind])
+
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
-    if (!over || active.id === over.id || !selectedDay || !tripId) return
+    if (!over || active.id === over.id || !tripId) return
+
+    if (activeTabKind === 'list' && selectedList) {
+      const oldIds = localListActivities.map((a) => a.id)
+      const oldIdx = oldIds.indexOf(active.id as string)
+      const newIdx = oldIds.indexOf(over.id as string)
+      if (oldIdx < 0 || newIdx < 0) return
+      const reordered = arrayMove(localListActivities, oldIdx, newIdx)
+      setLocalListActivities(reordered)
+      try {
+        await reorderListActivities(tripId, selectedList, reordered.map((a) => a.id))
+      } catch (e) {
+        console.error(e)
+        toast.error('Failed to reorder')
+        setLocalListActivities(selectedList.activities)
+      }
+      return
+    }
+
+    if (!selectedDay) return
     const oldIds = localActivities.map((a) => a.id)
     const oldIdx = oldIds.indexOf(active.id as string)
     const newIdx = oldIds.indexOf(over.id as string)
@@ -892,17 +918,21 @@ export default function TripDetail() {
                   <X className="h-4 w-4" />
                 </button>
               </div>
-              {selectedList.activities.length === 0 ? (
+              {localListActivities.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
                   <p>Empty list.</p>
                   <p className="mt-1 text-xs">Use the search box above to add a place.</p>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {selectedList.activities.map((a, i) => (
-                    <ListActivityRow key={a.id} activity={a} index={i} onEdit={() => setEditingActivityId(a.id)} />
-                  ))}
-                </div>
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                  <SortableContext items={localListActivities.map((a) => a.id)} strategy={verticalListSortingStrategy}>
+                    <div className="space-y-2">
+                      {localListActivities.map((a, i) => (
+                        <ListActivityRow key={a.id} activity={a} index={i} onEdit={() => setEditingActivityId(a.id)} />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
               )}
             </div>
           ) : !selectedDay ? (
@@ -1434,13 +1464,30 @@ function HotelBanner({ type, hotelName }: { type: 'checkin' | 'checkout'; hotelN
 }
 
 function ListActivityRow({ activity, index, onEdit }: { activity: Activity; index: number; onEdit: () => void }) {
-  const icon = activity.type === 'poi' ? '📍' : activity.type === 'transport' ? '🚌' : '📝'
+  const icon = activity.type === 'poi' ? '📍' : activity.type === 'flight' ? '✈️' : activity.type === 'transport' ? '🚌' : '📝'
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: activity.id })
+  const dndStyle = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
   return (
     <div
+      ref={setNodeRef}
+      style={dndStyle}
       onClick={onEdit}
       className="cursor-pointer rounded-lg border border-slate-200 bg-white p-3 transition hover:border-amber-300 hover:shadow-sm"
     >
       <div className="flex items-start gap-2">
+        <button
+          {...attributes}
+          {...listeners}
+          onClick={(e) => e.stopPropagation()}
+          className="mt-0.5 flex-shrink-0 cursor-grab touch-none text-slate-300 hover:text-slate-500 active:cursor-grabbing"
+          aria-label="Drag to reorder"
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
         <span className="mt-0.5 text-sm">{icon}</span>
         <div className="min-w-0 flex-1">
           <div className="font-medium text-slate-900">{activity.title}</div>
