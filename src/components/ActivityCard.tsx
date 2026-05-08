@@ -4,6 +4,7 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { Activity } from '@/lib/types'
 import { formatMoney } from '@/lib/utils'
+import Linkify from '@/components/Linkify'
 
 const TYPE_STYLES: Record<string, { badge: string; border: string }> = {
   poi: { badge: 'bg-rose-500', border: '' },
@@ -76,7 +77,7 @@ export default function ActivityCard({
               </span>
             )}
           </div>
-          {a.notes && <p className="mt-1.5 whitespace-pre-wrap text-xs text-slate-600">{a.notes}</p>}
+          {a.notes && <Linkify text={a.notes} className="mt-1.5 whitespace-pre-wrap text-xs text-slate-600" />}
           {/* Photo thumbnails */}
           {a.photos && a.photos.length > 0 && (
             <div className="mt-2 flex gap-1 overflow-x-auto">

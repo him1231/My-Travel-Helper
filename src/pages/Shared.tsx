@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Calendar, MapPin } from 'lucide-react'
 import TripMap from '@/components/TripMap'
+import Linkify from '@/components/Linkify'
 import { getTripByShareToken, subscribeTrip, subscribeDays } from '@/lib/firestore/trips'
 import type { Trip, Day } from '@/lib/types'
 import { formatDateISO, formatMoney } from '@/lib/utils'
@@ -145,7 +146,7 @@ export default function Shared() {
                           <span>{formatMoney(a.cost.amount, a.cost.currency)}</span>
                         )}
                       </div>
-                      {a.notes && <p className="mt-1.5 text-xs text-slate-600">{a.notes}</p>}
+                      {a.notes && <Linkify text={a.notes} className="mt-1.5 whitespace-pre-wrap text-xs text-slate-600" />}
                     </div>
                   </div>
                 </div>
