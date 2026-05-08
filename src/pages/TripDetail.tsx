@@ -810,9 +810,9 @@ export default function TripDetail() {
 
       {!showOverview && (
       <div className="border-b border-slate-200 bg-white">
-        <div className="px-4">
-          {/* Day tabs row — full width */}
-          <div className="flex items-center gap-2 overflow-x-auto py-2">
+        {/* Day tabs row */}
+        <div className="overflow-x-auto border-b border-slate-100 px-4">
+          <div className="flex min-w-max items-center gap-2 py-2">
             <DayTabs
               days={days}
               selectedId={activeTabKind === 'day' ? selectedDayId : null}
@@ -823,14 +823,16 @@ export default function TripDetail() {
               onConfigChange={handleDayTabConfigChange}
             />
           </div>
-          {/* Scratch list bar — separate row, always visible */}
-          <div className="flex items-center gap-2 overflow-x-auto border-t border-slate-100 py-1.5">
-            <span className="flex-shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Lists</span>
+        </div>
+        {/* List tabs row */}
+        <div className="overflow-x-auto px-4">
+          <div className="flex min-w-max items-center gap-2 py-1.5">
+            <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Lists</span>
             {scratchLists.map((list) => (
               <button
                 key={list.id}
                 onClick={() => { setSelectedListId(list.id); setActiveTabKind('list') }}
-                className={`flex-shrink-0 rounded-lg border py-1.5 px-3 text-sm transition ${
+                className={`shrink-0 rounded-lg border py-1 px-3 text-sm transition ${
                   activeTabKind === 'list' && selectedListId === list.id
                     ? 'border-amber-400 bg-amber-50 text-amber-700'
                     : 'border-amber-200 bg-amber-50/40 text-amber-700 hover:bg-amber-50'
@@ -841,7 +843,7 @@ export default function TripDetail() {
             ))}
             <button
               onClick={handleAddScratchList}
-              className="flex flex-shrink-0 items-center gap-1 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-50"
+              className="flex shrink-0 items-center gap-1 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-1 text-sm text-slate-500 hover:bg-slate-50"
               title="Add planning list"
             >
               <Plus className="h-3.5 w-3.5" />
