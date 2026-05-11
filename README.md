@@ -90,10 +90,9 @@ each storing the full list plus a `updatedAt` server timestamp.
 - **Checklist** — trip-level packing list with check/uncheck and add/remove items
 - **Quick-add buttons** at the very bottom: + Note · + Transport · + Flight (single tap from anywhere in the sidebar)
 
-### Header & weather
+### Header
 - Combined app + trip header: logo, back button, trip title/destination/dates, trip actions, signed-in user
-- Trip actions: Overview toggle, Weather toggle, Share link, Invite member, Print/PDF, iCal export, Delete
-- **Weather toggle** — hidden by default; cloud button shows/hides a 5-day forecast strip (Open-Meteo, free)
+- Trip actions: Overview toggle, Share link, Invite member, Print/PDF, iCal export, Delete
 
 ### Export & sharing
 - **iCal (.ics)** export for all timed activities (opens in calendar apps)
@@ -121,7 +120,6 @@ each storing the full list plus a `updatedAt` server timestamp.
 | Database | Firestore (no backend) |
 | Maps | Google Maps JavaScript API + Places API new SDK (`@vis.gl/react-google-maps`) |
 | Drag-and-drop | @dnd-kit (core + sortable) |
-| Weather | Open-Meteo API (free, no key) |
 | Icons | lucide-react |
 | Notifications | react-hot-toast |
 | PWA | vite-plugin-pwa / Workbox |
@@ -147,9 +145,8 @@ src/
 │   ├── PlacesAutocomplete.tsx  new-Places-API search input
 │   ├── TimelineView.tsx        clock-style itinerary view
 │   ├── TripCard.tsx            trip list tile
-│   ├── TripMap.tsx             interactive map: pins, route ribbon, explore,
-│   │                           walk radius, nearby, save-to-list, optimize
-│   └── WeatherWidget.tsx
+│   └── TripMap.tsx             interactive map: pins, route ribbon, explore,
+│                               walk radius, nearby, save-to-list, optimize
 ├── hooks/useAuth.tsx
 ├── lib/
 │   ├── firebase.ts             Firestore + Auth init (with offline persistence)

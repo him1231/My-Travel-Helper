@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { nanoid } from 'nanoid'
-import { ChevronDown, ChevronLeft, Calendar, Cloud, Compass, GripVertical, Image as ImageIcon, LayoutGrid, LayoutList, Link2, LogOut, Map as MapIcon, MapPin, MoreVertical, Plus, Printer, StickyNote, Clock, Trash2, UserPlus, X } from 'lucide-react'
+import { ChevronDown, ChevronLeft, Calendar, Compass, GripVertical, Image as ImageIcon, LayoutGrid, LayoutList, Link2, LogOut, Map as MapIcon, MapPin, MoreVertical, Plus, Printer, StickyNote, Clock, Trash2, UserPlus, X } from 'lucide-react'
 import Modal from '@/components/Modal'
 import type { DayTabConfig } from '@/components/DayTabs'
 import { DEFAULT_DAY_TAB_CONFIG } from '@/components/DayTabs'
@@ -24,7 +24,6 @@ import PlacesAutocomplete from '@/components/PlacesAutocomplete'
 import TripMap from '@/components/TripMap'
 import TimelineView from '@/components/TimelineView'
 import NearbyDrawer from '@/components/NearbyDrawer'
-import WeatherWidget from '@/components/WeatherWidget'
 import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, updateDayTitle, reorderActivities, reorderListActivities, reassignDayDates, updateActivity, removeActivity, moveActivityBetweenDays, subscribeScratchLists, addScratchList, renameScratchList, removeScratchList, reorderScratchLists, addActivityToList, updateActivityInList, removeActivityFromList, moveBetweenDayAndList, moveFromListToDay, moveBetweenLists } from '@/lib/firestore/trips'
 import type { Trip, Day, Activity, FlightInfo, Money, POI, ScratchList } from '@/lib/types'
 import { todayISO, addDaysISO, formatDateISO, formatMoney, exportIcal } from '@/lib/utils'
@@ -84,7 +83,6 @@ export default function TripDetail() {
   const [coverEditOpen, setCoverEditOpen] = useState(false)
   const [coverUrlInput, setCoverUrlInput] = useState('')
   const [coverBusy, setCoverBusy] = useState(false)
-  const [weatherVisible, setWeatherVisible] = useState(false)
   const [activitiesOpen, setActivitiesOpen] = useState(true)
   const [budgetOpen, setBudgetOpen] = useState(true)
   const [checklistOpen, setChecklistOpen] = useState(true)
@@ -750,15 +748,6 @@ export default function TripDetail() {
             >
               <MapIcon className="h-4 w-4" />
             </button>
-            {trip.destination && (
-              <button
-                onClick={() => setWeatherVisible((v) => !v)}
-                title={weatherVisible ? 'Hide weather' : 'Show weather'}
-                className={`rounded p-1.5 transition ${weatherVisible ? 'text-sky-500 hover:bg-sky-50' : 'text-slate-400 hover:bg-slate-100'}`}
-              >
-                <Cloud className="h-4 w-4" />
-              </button>
-            )}
             <button
               onClick={() => { setCoverUrlInput(trip.coverPhotoUrl ?? ''); setCoverEditOpen(true) }}
               className="rounded p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-sky-600"
@@ -916,15 +905,6 @@ export default function TripDetail() {
           </div>
         </div>
       </div>
-      )}
-
-      {/* Weather strip */}
-      {trip.destination && weatherVisible && (
-        <div className="border-b border-slate-200 bg-slate-50 px-4 py-2">
-          <div className="mx-auto max-w-7xl">
-            <WeatherWidget lat={trip.destination.lat} lng={trip.destination.lng} />
-          </div>
-        </div>
       )}
 
       {showOverview ? (
