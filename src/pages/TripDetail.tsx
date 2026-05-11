@@ -25,7 +25,7 @@ import TripMap from '@/components/TripMap'
 import TimelineView from '@/components/TimelineView'
 import NearbyDrawer from '@/components/NearbyDrawer'
 import WeatherWidget from '@/components/WeatherWidget'
-import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, updateDayTitle, reorderActivities, reorderListActivities, reassignDayDates, updateActivity, removeActivity, moveActivityBetweenDays, subscribeScratchLists, addScratchList, renameScratchList, removeScratchList, addActivityToList, updateActivityInList, removeActivityFromList, moveBetweenDayAndList, moveFromListToDay, moveBetweenLists } from '@/lib/firestore/trips'
+import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, updateDayTitle, reorderActivities, reorderListActivities, reassignDayDates, updateActivity, removeActivity, moveActivityBetweenDays, subscribeScratchLists, addScratchList, renameScratchList, removeScratchList, reorderScratchLists, addActivityToList, updateActivityInList, removeActivityFromList, moveBetweenDayAndList, moveFromListToDay, moveBetweenLists } from '@/lib/firestore/trips'
 import type { Trip, Day, Activity, FlightInfo, Money, POI, ScratchList } from '@/lib/types'
 import { todayISO, addDaysISO, formatDateISO, formatMoney, exportIcal } from '@/lib/utils'
 
@@ -570,7 +570,8 @@ export default function TripDetail() {
   const handleAddScratchList = async () => {
     if (!tripId) return
     try {
-      const id = await addScratchList(tripId, 'New list')
+      const nextOrder = scratchLists.reduce((m, l) => Math.max(m, l.order ?? -1), -1) + 1
+      const id = await addScratchList(tripId, 'New list', nextOrder)
       setSelectedListId(id)
       setActiveTabKind('list')
     } catch (e) { console.error(e); toast.error('Failed to create list') }
@@ -950,6 +951,10 @@ export default function TripDetail() {
               if (orderedDays.length === 0) return
               try { await reassignDayDates(tripId, orderedDays) }
               catch (e) { console.error(e); toast.error('Failed to reorder days') }
+            }}
+            onReorderLists={async (orderedIds) => {
+              try { await reorderScratchLists(tripId, orderedIds) }
+              catch (e) { console.error(e); toast.error('Failed to reorder lists') }
             }}
             onSelectActivity={(activityId, kind, containerId) => {
               if (kind === 'day') { setSelectedDayId(containerId); setActiveTabKind('day') }

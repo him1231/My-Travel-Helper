@@ -263,17 +263,30 @@ export async function getDaysForTrip(tripId: string): Promise<Day[]> {
 export function subscribeScratchLists(tripId: string, cb: (lists: ScratchList[]) => void) {
   return onSnapshot(
     query(listsCol(tripId), orderBy('createdAt')),
-    (snap) => cb(snap.docs.map((d) => {
-      const data = d.data() as Omit<ScratchList, 'id'>
-      return { id: d.id, ...data, activities: sortByOrder(data.activities ?? []) }
-    })),
+    (snap) => {
+      const lists = snap.docs.map((d) => {
+        const data = d.data() as Omit<ScratchList, 'id'>
+        return { id: d.id, ...data, activities: sortByOrder(data.activities ?? []) }
+      })
+      cb(sortListsByOrder(lists))
+    },
     (err) => { console.error('subscribeScratchLists:', err); cb([]) },
   )
 }
 
-export async function addScratchList(tripId: string, name: string): Promise<string> {
-  const ref = await addDoc(listsCol(tripId), { name, activities: [], createdAt: serverTimestamp() })
+export async function addScratchList(tripId: string, name: string, order?: number): Promise<string> {
+  const data: Record<string, unknown> = { name, activities: [], createdAt: serverTimestamp() }
+  if (order != null) data.order = order
+  const ref = await addDoc(listsCol(tripId), data)
   return ref.id
+}
+
+export async function reorderScratchLists(tripId: string, orderedIds: string[]): Promise<void> {
+  const batch = writeBatch(db)
+  orderedIds.forEach((id, i) => {
+    batch.update(doc(listsCol(tripId), id), { order: i })
+  })
+  await batch.commit()
 }
 
 export async function renameScratchList(tripId: string, listId: string, name: string): Promise<void> {
@@ -403,6 +416,20 @@ function clampIndex(idx: number | undefined, max: number): number {
 // that scrambles array order doesn't corrupt the rendered sequence.
 function sortByOrder(activities: Activity[]): Activity[] {
   return [...activities].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+}
+
+// Lists that have been reordered have an explicit `order`; legacy lists fall
+// back to createdAt order (already imposed by the server-side query).
+function sortListsByOrder(lists: ScratchList[]): ScratchList[] {
+  if (!lists.some((l) => l.order != null)) return lists
+  return [...lists].sort((a, b) => {
+    const ao = a.order ?? Number.MAX_SAFE_INTEGER
+    const bo = b.order ?? Number.MAX_SAFE_INTEGER
+    if (ao !== bo) return ao - bo
+    const at = a.createdAt?.toMillis() ?? 0
+    const bt = b.createdAt?.toMillis() ?? 0
+    return at - bt
+  })
 }
 
 function mergePatch(activity: Activity, patch: Partial<Activity>): Activity {

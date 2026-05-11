@@ -22,8 +22,9 @@ function makePinSvg(color: string, label: string): string {
   )}`
 }
 
-// Drag ID prefixes to distinguish day-column drags from activity drags
+// Drag ID prefixes to distinguish day-column / list-column drags from activity drags
 const DAY_COL_PREFIX = 'daycol::'
+const LIST_COL_PREFIX = 'listcol::'
 
 // Column key: "day::<dayId>" or "list::<listId>"
 type ColKey = string
@@ -44,27 +45,31 @@ type Props = {
     kind: 'day' | 'list', containerId: string, orderedIds: string[],
   ) => Promise<void>
   onReorderDays?: (orderedIds: string[]) => Promise<void>
+  onReorderLists?: (orderedIds: string[]) => Promise<void>
   onSelectActivity?: (activityId: string, kind: 'day' | 'list', containerId: string) => void
   onSelectDay?: (dayId: string) => void
   onSelectList?: (listId: string) => void
 }
 
-export default function OverviewView({ days, scratchLists, initialView, onMoveActivity, onReorderActivities, onReorderDays, onSelectActivity, onSelectDay, onSelectList }: Props) {
+export default function OverviewView({ days, scratchLists, initialView, onMoveActivity, onReorderActivities, onReorderDays, onReorderLists, onSelectActivity, onSelectDay, onSelectList }: Props) {
   const [view, setView] = useState<'kanban' | 'map'>(initialView ?? 'kanban')
   useEffect(() => { if (initialView) setView(initialView) }, [initialView])
-  // activeActivityId for activity drag; activeDayId for day column drag
+  // activeActivityId for activity drag; activeDayId / activeListId for column drags
   const [activeActivityId, setActiveActivityId] = useState<string | null>(null)
   const [activeDayId, setActiveDayId] = useState<string | null>(null)
+  const [activeListId, setActiveListId] = useState<string | null>(null)
   const isDraggingDay = useRef(false)
+  const isDraggingList = useRef(false)
   const isDraggingActivity = useRef(false)
   // Watchdog: if a drag-end write hangs, snapshot suppression should not last forever
   // — otherwise local state can drift from server indefinitely.
   const dragWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const armDragWatchdog = (kind: 'activity' | 'day') => {
+  const armDragWatchdog = (kind: 'activity' | 'day' | 'list') => {
     if (dragWatchdogRef.current) clearTimeout(dragWatchdogRef.current)
     dragWatchdogRef.current = setTimeout(() => {
       if (kind === 'activity') isDraggingActivity.current = false
-      else isDraggingDay.current = false
+      else if (kind === 'day') isDraggingDay.current = false
+      else isDraggingList.current = false
       dragWatchdogRef.current = null
     }, 10_000)
   }
@@ -83,16 +88,26 @@ export default function OverviewView({ days, scratchLists, initialView, onMoveAc
 
   // Day columns follow date order; reordering shifts content between date slots.
   const serverDayIds = useMemo(() => days.map((d) => d.id), [days])
+  const serverListIds = useMemo(() => scratchLists.map((l) => l.id), [scratchLists])
 
   // Mirror of localDayIds so handleDragEnd always reads the latest order, not a stale closure
   const localDayIdsRef = useRef<string[]>(serverDayIds)
+  const localListIdsRef = useRef<string[]>(serverListIds)
 
   // Local order for live drag preview — only sync from server when not dragging
   const [localDayIds, setLocalDayIds] = useState<string[]>(serverDayIds)
+  const [localListIds, setLocalListIds] = useState<string[]>(serverListIds)
   const setLocalDayIdsAndRef = (ids: string[] | ((prev: string[]) => string[])) => {
     setLocalDayIds((prev) => {
       const next = typeof ids === 'function' ? ids(prev) : ids
       localDayIdsRef.current = next
+      return next
+    })
+  }
+  const setLocalListIdsAndRef = (ids: string[] | ((prev: string[]) => string[])) => {
+    setLocalListIds((prev) => {
+      const next = typeof ids === 'function' ? ids(prev) : ids
+      localListIdsRef.current = next
       return next
     })
   }
@@ -102,6 +117,12 @@ export default function OverviewView({ days, scratchLists, initialView, onMoveAc
       setLocalDayIds(serverDayIds)
     }
   }, [serverDayIds])
+  useEffect(() => {
+    if (!isDraggingList.current) {
+      localListIdsRef.current = serverListIds
+      setLocalListIds(serverListIds)
+    }
+  }, [serverListIds])
 
   // Local activity lists per column for live drag preview
   const buildLocalColumns = () => {
@@ -117,10 +138,15 @@ export default function OverviewView({ days, scratchLists, initialView, onMoveAc
   }, [serverColumns])
 
   const dayMap = useMemo(() => new globalThis.Map(days.map((d) => [d.id, d])), [days])
+  const listMap = useMemo(() => new globalThis.Map(scratchLists.map((l) => [l.id, l])), [scratchLists])
 
   const localOrderedDays = useMemo(
     () => localDayIds.map((id) => dayMap.get(id)).filter((d): d is Day => !!d),
     [localDayIds, dayMap],
+  )
+  const localOrderedLists = useMemo(
+    () => localListIds.map((id) => listMap.get(id)).filter((l): l is ScratchList => !!l),
+    [localListIds, listMap],
   )
 
   const activeActivity = useMemo(() => {
@@ -137,12 +163,23 @@ export default function OverviewView({ days, scratchLists, initialView, onMoveAc
     [activeDayId, dayMap],
   )
 
+  const activeListData = useMemo(
+    () => (activeListId ? listMap.get(activeListId) ?? null : null),
+    [activeListId, listMap],
+  )
+
   const handleDragStart = (e: DragStartEvent) => {
     const id = e.active.id as string
     if (id.startsWith(DAY_COL_PREFIX)) {
       isDraggingDay.current = true
       armDragWatchdog('day')
       setActiveDayId(id.slice(DAY_COL_PREFIX.length))
+      return
+    }
+    if (id.startsWith(LIST_COL_PREFIX)) {
+      isDraggingList.current = true
+      armDragWatchdog('list')
+      setActiveListId(id.slice(LIST_COL_PREFIX.length))
       return
     }
     // Activity drag — id is just activity.id; locate its source column
@@ -169,6 +206,7 @@ export default function OverviewView({ days, scratchLists, initialView, onMoveAc
     cols: globalThis.Map<ColKey, Activity[]>,
   ): { toKind: 'day' | 'list'; toId: string; overActivityId: string | null } | null => {
     if (overId.startsWith(DAY_COL_PREFIX)) return null
+    if (overId.startsWith(LIST_COL_PREFIX)) return null
     if (overId.includes('::')) {
       const [k, id] = overId.split('::')
       if (k !== 'day' && k !== 'list') return null
@@ -203,6 +241,26 @@ export default function OverviewView({ days, scratchLists, initialView, onMoveAc
       }
       if (!toId || fromId === toId) return
       setLocalDayIdsAndRef((ids) => {
+        const oldIdx = ids.indexOf(fromId)
+        const newIdx = ids.indexOf(toId!)
+        if (oldIdx === -1 || newIdx === -1) return ids
+        return arrayMove(ids, oldIdx, newIdx)
+      })
+      return
+    }
+
+    // List column reorder
+    if (dragId.startsWith(LIST_COL_PREFIX)) {
+      const overId = e.over.id as string
+      const fromId = dragId.slice(LIST_COL_PREFIX.length)
+      let toId: string | null = null
+      if (overId.startsWith(LIST_COL_PREFIX)) {
+        toId = overId.slice(LIST_COL_PREFIX.length)
+      } else if (overId.startsWith('list::') && overId.split('::').length === 2) {
+        toId = overId.slice('list::'.length)
+      }
+      if (!toId || fromId === toId) return
+      setLocalListIdsAndRef((ids) => {
         const oldIdx = ids.indexOf(fromId)
         const newIdx = ids.indexOf(toId!)
         if (oldIdx === -1 || newIdx === -1) return ids
@@ -269,6 +327,22 @@ export default function OverviewView({ days, scratchLists, initialView, onMoveAc
         console.error(err)
         localDayIdsRef.current = serverDayIds
         setLocalDayIds(serverDayIds) // rollback
+      }
+      return
+    }
+
+    // List column reorder
+    if (dragId.startsWith(LIST_COL_PREFIX)) {
+      isDraggingList.current = false
+      disarmDragWatchdog()
+      setActiveListId(null)
+      const finalIds = localListIdsRef.current.slice()
+      try {
+        await onReorderLists?.(finalIds)
+      } catch (err) {
+        console.error(err)
+        localListIdsRef.current = serverListIds
+        setLocalListIds(serverListIds) // rollback
       }
       return
     }
@@ -361,15 +435,21 @@ export default function OverviewView({ days, scratchLists, initialView, onMoveAc
                   />
                 ))}
               </SortableContext>
-              {scratchLists.map((list) => (
-                <ListColumn
-                  key={list.id}
-                  list={list}
-                  activities={localColumns.get(colKey('list', list.id)) ?? list.activities}
-                  onSelectActivity={onSelectActivity}
-                  onSelectList={onSelectList}
-                />
-              ))}
+              <SortableContext
+                items={localListIds.map((id) => `${LIST_COL_PREFIX}${id}`)}
+                strategy={horizontalListSortingStrategy}
+              >
+                {localOrderedLists.map((list) => (
+                  <SortableListColumn
+                    key={list.id}
+                    list={list}
+                    activities={localColumns.get(colKey('list', list.id)) ?? list.activities}
+                    isDragging={activeListId === list.id}
+                    onSelectActivity={onSelectActivity}
+                    onSelectList={onSelectList}
+                  />
+                ))}
+              </SortableContext>
               {days.length === 0 && scratchLists.length === 0 && (
                 <div className="flex items-center justify-center p-8 text-sm text-slate-400">
                   No days yet — add a day to get started.
@@ -381,7 +461,10 @@ export default function OverviewView({ days, scratchLists, initialView, onMoveAc
             {activeDayData && (
               <DayColumnCard day={activeDayData} dayIdx={localDayIds.indexOf(activeDayData.id)} ghost />
             )}
-            {activeActivity && !activeDayData && <ActivityChip activity={activeActivity} ghost />}
+            {activeListData && !activeDayData && (
+              <ListColumnCard list={activeListData} ghost />
+            )}
+            {activeActivity && !activeDayData && !activeListData && <ActivityChip activity={activeActivity} ghost />}
           </DragOverlay>
         </DndContext>
       )}
@@ -495,45 +578,92 @@ function DayColumnCard({
   )
 }
 
-function ListColumn({
-  list, activities, onSelectActivity, onSelectList,
+function SortableListColumn({
+  list, activities, isDragging, onSelectActivity, onSelectList,
 }: {
   list: ScratchList
   activities: Activity[]
+  isDragging?: boolean
+  onSelectActivity?: (activityId: string, kind: 'day' | 'list', containerId: string) => void
+  onSelectList?: (listId: string) => void
+}) {
+  const { setNodeRef, attributes, listeners, transform, transition } = useSortable({
+    id: `${LIST_COL_PREFIX}${list.id}`,
+  })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
+  return (
+    <div ref={setNodeRef} style={style}>
+      <ListColumnCard
+        list={list}
+        activities={activities}
+        dragHandleProps={{ ...attributes, ...listeners }}
+        onSelectActivity={onSelectActivity}
+        onSelectList={onSelectList}
+      />
+    </div>
+  )
+}
+
+function ListColumnCard({
+  list, activities, ghost, dragHandleProps, onSelectActivity, onSelectList,
+}: {
+  list: ScratchList
+  activities?: Activity[]
+  ghost?: boolean
+  dragHandleProps?: React.HTMLAttributes<HTMLElement>
   onSelectActivity?: (activityId: string, kind: 'day' | 'list', containerId: string) => void
   onSelectList?: (listId: string) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `list::${list.id}` })
+  const actList = activities ?? list.activities
   return (
     <div
       ref={setNodeRef}
-      className={`flex w-56 flex-shrink-0 flex-col rounded-xl border transition-colors ${isOver ? 'border-amber-400 bg-amber-50' : 'border-amber-200 bg-amber-50/40'}`}
+      className={`flex w-56 flex-shrink-0 flex-col rounded-xl border transition-colors ${
+        ghost ? 'rotate-2 shadow-2xl border-amber-400 bg-amber-50' : isOver ? 'border-amber-400 bg-amber-50' : 'border-amber-200 bg-amber-50/40'
+      }`}
     >
-      <div
-        className={`rounded-t-xl border-b border-amber-200 bg-amber-50 px-3 py-2.5 ${onSelectList ? 'cursor-pointer hover:bg-amber-100' : ''}`}
-        onClick={onSelectList ? () => onSelectList(list.id) : undefined}
-        title={onSelectList ? 'Open list detail' : undefined}
-      >
-        <div className="flex items-center gap-1">
-          <span className="text-xs">📋</span>
-          <div className="truncate text-xs font-semibold text-amber-800">{list.name}</div>
+      <div className="rounded-t-xl border-b border-amber-200 bg-amber-50">
+        <div className="flex items-center gap-1 px-2 pt-2">
+          <button
+            {...dragHandleProps}
+            className="cursor-grab touch-none rounded p-0.5 text-amber-400 hover:text-amber-600 active:cursor-grabbing focus:outline-none"
+            title="Drag to reorder list"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GripVertical className="h-3.5 w-3.5" />
+          </button>
+          <div
+            className={`flex-1 min-w-0 pb-1.5 ${onSelectList ? 'cursor-pointer hover:opacity-80' : ''}`}
+            onClick={onSelectList ? () => onSelectList(list.id) : undefined}
+            title={onSelectList ? 'Open list detail' : undefined}
+          >
+            <div className="flex items-center gap-1">
+              <span className="text-xs">📋</span>
+              <div className="truncate text-xs font-semibold text-amber-800">{list.name}</div>
+            </div>
+            <div className="text-[10px] text-amber-600">{actList.length} item{actList.length !== 1 ? 's' : ''}</div>
+          </div>
         </div>
-        <div className="text-[10px] text-amber-600">{activities.length} item{activities.length !== 1 ? 's' : ''}</div>
       </div>
       <div className="flex-1 overflow-y-auto p-2">
         <SortableContext
-          items={activities.map((a) => a.id)}
+          items={actList.map((a) => a.id)}
           strategy={verticalListSortingStrategy}
         >
           <div className="space-y-1.5">
-            {activities.map((activity) => (
+            {actList.map((activity) => (
               <SortableActivity
                 key={activity.id}
                 activity={activity}
                 onSelect={() => onSelectActivity?.(activity.id, 'list', list.id)}
               />
             ))}
-            {activities.length === 0 && (
+            {actList.length === 0 && (
               <div className="rounded-lg border border-dashed border-amber-200 py-5 text-center text-[10px] text-amber-400">
                 Drop here
               </div>
@@ -582,8 +712,12 @@ function ActivityChip({ activity, ghost }: { activity: Activity; ghost?: boolean
         <span className="text-xs">{icon}</span>
         <span className="truncate text-xs font-medium text-slate-700">{activity.title}</span>
       </div>
-      {activity.startTime && (
-        <div className="mt-0.5 pl-4 text-[10px] text-slate-400">{activity.startTime}</div>
+      {(activity.startTime || activity.durationMinutes) && (
+        <div className="mt-0.5 pl-4 text-[10px] text-slate-400">
+          {activity.startTime}
+          {activity.startTime && activity.durationMinutes ? ' · ' : ''}
+          {activity.durationMinutes ? `${activity.durationMinutes}m` : ''}
+        </div>
       )}
     </div>
   )

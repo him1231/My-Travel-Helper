@@ -76,6 +76,7 @@ export type ScratchList = {
   name: string
   activities: Activity[]
   createdAt: Timestamp | null
+  order?: number
 }
 
 export type ChecklistItem = { id: string; text: string; done: boolean }
