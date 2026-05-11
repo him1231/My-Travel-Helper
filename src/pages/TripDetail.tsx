@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { nanoid } from 'nanoid'
-import { ChevronDown, ChevronLeft, Calendar, Cloud, Compass, GripVertical, Image as ImageIcon, LayoutGrid, LayoutList, Link2, LogOut, Map as MapIcon, MapPin, Plus, Printer, StickyNote, Clock, UserPlus, X } from 'lucide-react'
+import { ChevronDown, ChevronLeft, Calendar, Cloud, Compass, GripVertical, Image as ImageIcon, LayoutGrid, LayoutList, Link2, LogOut, Map as MapIcon, MapPin, MoreVertical, Plus, Printer, StickyNote, Clock, Trash2, UserPlus, X } from 'lucide-react'
 import Modal from '@/components/Modal'
 import type { DayTabConfig } from '@/components/DayTabs'
 import { DEFAULT_DAY_TAB_CONFIG } from '@/components/DayTabs'
@@ -96,6 +96,8 @@ export default function TripDetail() {
   const [activeTabKind, setActiveTabKind] = useState<'day' | 'list'>('day')
   const [selectedListId, setSelectedListId] = useState<string | null>(null)
   const [flightModalOpen, setFlightModalOpen] = useState(false)
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false)
+  const moreMenuRef = useRef<HTMLDivElement>(null)
   const [listNameValue, setListNameValue] = useState('')
   const [dayTitleValue, setDayTitleValue] = useState('')
   const dayTitleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -204,6 +206,18 @@ export default function TripDetail() {
     if (activeTabKind !== 'list') return
     setLocalListActivities(selectedList?.activities ?? [])
   }, [selectedList?.activities, activeTabKind])
+
+  // Close the mobile overflow menu on outside click
+  useEffect(() => {
+    if (!moreMenuOpen) return
+    const onDocClick = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setMoreMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [moreMenuOpen])
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
@@ -751,6 +765,55 @@ export default function TripDetail() {
             >
               <ImageIcon className="h-4 w-4" />
             </button>
+
+            {/* Mobile overflow menu — exposes Share/Invite/Print/iCal/Delete on small screens */}
+            <div ref={moreMenuRef} className="relative sm:hidden">
+              <button
+                onClick={() => setMoreMenuOpen((v) => !v)}
+                className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                title="More actions"
+                aria-label="More actions"
+                aria-expanded={moreMenuOpen}
+              >
+                <MoreVertical className="h-4 w-4" />
+              </button>
+              {moreMenuOpen && (
+                <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+                  <button
+                    onClick={() => { setMoreMenuOpen(false); handleShareTrip() }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    <Link2 className="h-4 w-4" /> Share link
+                  </button>
+                  <button
+                    onClick={() => { setMoreMenuOpen(false); setInviteOpen(true) }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    <UserPlus className="h-4 w-4" /> Invite member
+                  </button>
+                  <button
+                    onClick={() => { setMoreMenuOpen(false); window.print() }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    <Printer className="h-4 w-4" /> Print / PDF
+                  </button>
+                  <button
+                    onClick={() => { setMoreMenuOpen(false); exportIcal(trip.title, days) }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    <Calendar className="h-4 w-4" /> Export iCal
+                  </button>
+                  <div className="my-1 h-px bg-slate-100" />
+                  <button
+                    onClick={() => { setMoreMenuOpen(false); handleDeleteTrip() }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-4 w-4" /> Delete trip
+                  </button>
+                </div>
+              )}
+            </div>
+
             <button
               onClick={handleShareTrip}
               className="hidden items-center gap-1 rounded px-2 py-1.5 text-sm text-slate-600 hover:bg-slate-100 hover:text-sky-600 sm:flex"
