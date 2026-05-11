@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Plane, ClipboardPaste, Pencil } from 'lucide-react'
 import Modal from '@/components/Modal'
+import IataAutocomplete from '@/components/IataAutocomplete'
 import type { FlightInfo, Money } from '@/lib/types'
 import { parseFlightText } from '@/lib/flightParse'
+import { searchAirports, searchAirlines, findAirport, type IataAirport, type IataAirline } from '@/lib/iata'
 
 type Tab = 'manual' | 'paste'
 
@@ -203,7 +205,28 @@ export default function FlightImportModal({
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <Field label="Airline">
-              <input value={airline} onChange={(e) => setAirline(e.target.value)} className="input" placeholder="American Airlines" />
+              <IataAutocomplete<IataAirline>
+                value={airline}
+                onChange={setAirline}
+                onSelect={(a) => {
+                  setAirline(a.name)
+                  // If the flight number looks empty or doesn't already start with the carrier code, prefix it.
+                  if (!flightNumber.trim()) setFlightNumber(`${a.code} `)
+                  else if (!/^[A-Z0-9]{2,3}\b/.test(flightNumber.trim().toUpperCase())) {
+                    setFlightNumber(`${a.code} ${flightNumber.trim()}`)
+                  }
+                }}
+                search={(q) => searchAirlines(q, 8)}
+                renderItem={(a) => (
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-mono font-semibold text-slate-700">{a.code}</span>
+                    <span className="truncate">{a.name}</span>
+                    {a.country && <span className="ml-auto text-[10px] text-slate-400">{a.country}</span>}
+                  </div>
+                )}
+                itemToValue={(a) => a.name}
+                placeholder="American Airlines"
+              />
             </Field>
             <Field label="Flight #">
               <input value={flightNumber} onChange={(e) => setFlightNumber(e.target.value)} className="input" placeholder="AA 100" />
@@ -214,7 +237,33 @@ export default function FlightImportModal({
             <legend className="px-1 text-xs font-semibold text-slate-500">Departure</legend>
             <div className="grid grid-cols-2 gap-2">
               <Field label="Airport (IATA)">
-                <input value={depCode} onChange={(e) => setDepCode(e.target.value.toUpperCase())} className="input" placeholder="JFK" maxLength={3} />
+                <IataAutocomplete<IataAirport>
+                  value={depCode}
+                  onChange={(v) => {
+                    setDepCode(v)
+                    // Auto-fill city if the typed code matches a known airport and city is empty.
+                    if (!depCity.trim() && v.length === 3) {
+                      const hit = findAirport(v)
+                      if (hit?.city) setDepCity(hit.city)
+                    }
+                  }}
+                  onSelect={(ap) => {
+                    setDepCode(ap.code)
+                    if (ap.city) setDepCity(ap.city)
+                  }}
+                  search={(q) => searchAirports(q, 8)}
+                  renderItem={(ap) => (
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-mono font-semibold text-slate-700">{ap.code}</span>
+                      <span className="truncate">{ap.city}</span>
+                      <span className="ml-auto truncate text-[10px] text-slate-400">{ap.name}</span>
+                    </div>
+                  )}
+                  itemToValue={(ap) => ap.code}
+                  placeholder="JFK"
+                  maxLength={3}
+                  uppercase
+                />
               </Field>
               <Field label="City">
                 <input value={depCity} onChange={(e) => setDepCity(e.target.value)} className="input" placeholder="New York" />
@@ -237,7 +286,32 @@ export default function FlightImportModal({
             <legend className="px-1 text-xs font-semibold text-slate-500">Arrival</legend>
             <div className="grid grid-cols-2 gap-2">
               <Field label="Airport (IATA)">
-                <input value={arrCode} onChange={(e) => setArrCode(e.target.value.toUpperCase())} className="input" placeholder="LHR" maxLength={3} />
+                <IataAutocomplete<IataAirport>
+                  value={arrCode}
+                  onChange={(v) => {
+                    setArrCode(v)
+                    if (!arrCity.trim() && v.length === 3) {
+                      const hit = findAirport(v)
+                      if (hit?.city) setArrCity(hit.city)
+                    }
+                  }}
+                  onSelect={(ap) => {
+                    setArrCode(ap.code)
+                    if (ap.city) setArrCity(ap.city)
+                  }}
+                  search={(q) => searchAirports(q, 8)}
+                  renderItem={(ap) => (
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-mono font-semibold text-slate-700">{ap.code}</span>
+                      <span className="truncate">{ap.city}</span>
+                      <span className="ml-auto truncate text-[10px] text-slate-400">{ap.name}</span>
+                    </div>
+                  )}
+                  itemToValue={(ap) => ap.code}
+                  placeholder="LHR"
+                  maxLength={3}
+                  uppercase
+                />
               </Field>
               <Field label="City">
                 <input value={arrCity} onChange={(e) => setArrCity(e.target.value)} className="input" placeholder="London" />

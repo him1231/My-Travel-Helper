@@ -23,3 +23,7 @@ build/
 *.tsbuildinfo
 test-results/
 playwright-report/
+
+# Firebase admin credentials (used by npm run seed:iata) — NEVER commit
+service-account.json
+service-account-*.json

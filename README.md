@@ -30,10 +30,27 @@ Sign in with Google to get started. No account required beyond a Google account.
 - **Two import modes** — switchable tabs in the modal:
   - **Manual entry** — structured form for airline, flight number, departure/arrival airport (IATA) + city + local datetime + terminal + gate, plus confirmation/PNR, seat, class
   - **Paste from email** — drop in a confirmation email; a regex extractor pre-fills airline, flight number, IATA codes, times, dates, confirmation, seat, class, terminal, and gate. You jump to the manual tab to review and edit before saving — never a silent import.
+- **IATA autocomplete** — airline name + departure/arrival airport-code fields suggest as you type. Bundled lookup table covers top global carriers + every airline serving Hong Kong, and ~200 major airports worldwide (`src/data/iata-*.json`). Free-text is preserved, so unknown codes still work.
 - Flight lands on the day matching its **departure date**; if that day isn't in the trip yet, it's auto-created so the flight has a home.
 - **Custom card layout** in the day list and shared view: cyan plane badge, airline · flight #, `JFK → LHR · 14:30 → 02:30+1` (overnight day-shift indicated), terminal/gate, confirmation, seat, class chip
 - **iCal export** treats flights specially: location becomes `JFK ✈ LHR`, description includes confirmation, seat, terminals, and gates
 - No paid flight-status API — the feature is purely about capturing/displaying booking data the user already has
+
+#### Seeding IATA data to Firestore (optional)
+The app reads IATA data directly from bundled JSON — no Firestore reads
+needed at runtime. A one-time seed script is provided so the same data
+can also be stored in Firestore for any future server-side feature:
+
+```bash
+# 1) Firebase Console → Project Settings → Service accounts → Generate
+#    new private key, save as `service-account.json` at the repo root
+#    (already gitignored).
+# 2) Run:
+npm run seed:iata
+```
+
+Writes two single-document maps: `iata/airlines` and `iata/airports`,
+each storing the full list plus a `updatedAt` server timestamp.
 
 ### Scratch / planning lists
 - Named lists for backup POIs and "maybe" options, kept beside day tabs
@@ -119,6 +136,7 @@ src/
 │   ├── ActivityEditModal.tsx   shared edit modal (works for day & list activities)
 │   ├── AuthGuard.tsx           protected route wrapper
 │   ├── FlightImportModal.tsx   manual + paste-from-email flight import
+│   ├── IataAutocomplete.tsx    generic combobox used for airline + airport fields
 │   ├── Linkify.tsx             render text with http(s) URLs as clickable links
 │   ├── DayTabs.tsx             day buttons + ⚙ tab-display config (portal popup)
 │   ├── Header.tsx
@@ -137,8 +155,14 @@ src/
 │   ├── firebase.ts             Firestore + Auth init (with offline persistence)
 │   ├── firestore/trips.ts      all trip / day / list / activity CRUD
 │   ├── flightParse.ts          best-effort regex extractor for flight emails
+│   ├── iata.ts                 IATA airline/airport lookup + search helpers
 │   ├── types.ts                Trip, Day, Activity, FlightInfo, POI, ScratchList, …
 │   └── utils.ts                date / money / iCal helpers
+└── data/
+    ├── iata-airlines.json      bundled airline lookup table
+    └── iata-airports.json      bundled airport lookup table
+
+scripts/seed-iata.mjs            one-shot uploader of the JSON tables to Firestore
 └── pages/
     ├── Landing.tsx · Login.tsx · Profile.tsx
     ├── Shared.tsx              public read-only trip view
