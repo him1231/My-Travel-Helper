@@ -162,6 +162,16 @@ function TripMapInner({
     }
   }, [previewPOI, onPreviewConsumed])
 
+  // When an activity is selected from the list/timeline/kanban, surface its
+  // POI in the bottom sheet — same panel users see after a search-box pick.
+  const selectedPOI = selectedId ? activities.find((a) => a.id === selectedId)?.poi : undefined
+  const selectedPOIKey = selectedPOI ? `${selectedPOI.placeId ?? ''}|${selectedPOI.lat},${selectedPOI.lng}` : ''
+  useEffect(() => {
+    if (!selectedPOI) return
+    setMapPOI(selectedPOI); setNearbyPOIs([]); setListOpen(false); setHotelPickerOpen(false)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPOIKey])
+
   const addedPlaceIds = useMemo(
     () => new Set(activities.filter((a) => a.poi?.placeId).map((a) => a.poi!.placeId!)),
     [activities],
