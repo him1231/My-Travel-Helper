@@ -7,7 +7,7 @@ import {
 import { SortableContext, horizontalListSortingStrategy, verticalListSortingStrategy, arrayMove, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Map, Marker, useApiIsLoaded, useMap } from '@vis.gl/react-google-maps'
-import { ChevronDown, GripVertical, LayoutGrid, Map as MapIcon } from 'lucide-react'
+import { ChevronDown, GripVertical, LayoutGrid, Map as MapIcon, Pencil } from 'lucide-react'
 import type { Activity, Day, ScratchList } from '@/lib/types'
 import { formatDateISO } from '@/lib/utils'
 import { useMapsAuthFailed } from '@/lib/mapsStatus'
@@ -47,11 +47,12 @@ type Props = {
   onReorderDays?: (orderedIds: string[]) => Promise<void>
   onReorderLists?: (orderedIds: string[]) => Promise<void>
   onSelectActivity?: (activityId: string, kind: 'day' | 'list', containerId: string) => void
+  onEditActivity?: (activityId: string, kind: 'day' | 'list', containerId: string) => void
   onSelectDay?: (dayId: string) => void
   onSelectList?: (listId: string) => void
 }
 
-export default function OverviewView({ days, scratchLists, initialView, onMoveActivity, onReorderActivities, onReorderDays, onReorderLists, onSelectActivity, onSelectDay, onSelectList }: Props) {
+export default function OverviewView({ days, scratchLists, initialView, onMoveActivity, onReorderActivities, onReorderDays, onReorderLists, onSelectActivity, onEditActivity, onSelectDay, onSelectList }: Props) {
   const [view, setView] = useState<'kanban' | 'map'>(initialView ?? 'kanban')
   useEffect(() => { if (initialView) setView(initialView) }, [initialView])
   // activeActivityId for activity drag; activeDayId / activeListId for column drags
@@ -431,6 +432,7 @@ export default function OverviewView({ days, scratchLists, initialView, onMoveAc
                     activities={localColumns.get(colKey('day', day.id)) ?? day.activities}
                     isDragging={activeDayId === day.id}
                     onSelectActivity={onSelectActivity}
+                    onEditActivity={onEditActivity}
                     onSelectDay={onSelectDay}
                   />
                 ))}
@@ -446,6 +448,7 @@ export default function OverviewView({ days, scratchLists, initialView, onMoveAc
                     activities={localColumns.get(colKey('list', list.id)) ?? list.activities}
                     isDragging={activeListId === list.id}
                     onSelectActivity={onSelectActivity}
+                    onEditActivity={onEditActivity}
                     onSelectList={onSelectList}
                   />
                 ))}
@@ -473,13 +476,14 @@ export default function OverviewView({ days, scratchLists, initialView, onMoveAc
 }
 
 function SortableDayColumn({
-  day, dayIdx, activities, isDragging, onSelectActivity, onSelectDay,
+  day, dayIdx, activities, isDragging, onSelectActivity, onEditActivity, onSelectDay,
 }: {
   day: Day
   dayIdx: number
   activities: Activity[]
   isDragging?: boolean
   onSelectActivity?: (activityId: string, kind: 'day' | 'list', containerId: string) => void
+  onEditActivity?: (activityId: string, kind: 'day' | 'list', containerId: string) => void
   onSelectDay?: (dayId: string) => void
 }) {
   const { setNodeRef, attributes, listeners, transform, transition } = useSortable({
@@ -498,6 +502,7 @@ function SortableDayColumn({
         activities={activities}
         dragHandleProps={{ ...attributes, ...listeners }}
         onSelectActivity={onSelectActivity}
+        onEditActivity={onEditActivity}
         onSelectDay={onSelectDay}
       />
     </div>
@@ -505,7 +510,7 @@ function SortableDayColumn({
 }
 
 function DayColumnCard({
-  day, dayIdx, activities, ghost, dragHandleProps, onSelectActivity, onSelectDay,
+  day, dayIdx, activities, ghost, dragHandleProps, onSelectActivity, onEditActivity, onSelectDay,
 }: {
   day: Day
   dayIdx: number
@@ -513,6 +518,7 @@ function DayColumnCard({
   ghost?: boolean
   dragHandleProps?: React.HTMLAttributes<HTMLElement>
   onSelectActivity?: (activityId: string, kind: 'day' | 'list', containerId: string) => void
+  onEditActivity?: (activityId: string, kind: 'day' | 'list', containerId: string) => void
   onSelectDay?: (dayId: string) => void
 }) {
   const color = DAY_COLORS[dayIdx % DAY_COLORS.length]
@@ -564,6 +570,7 @@ function DayColumnCard({
                 key={activity.id}
                 activity={activity}
                 onSelect={() => onSelectActivity?.(activity.id, 'day', day.id)}
+                onEdit={onEditActivity ? () => onEditActivity(activity.id, 'day', day.id) : undefined}
               />
             ))}
             {actList.length === 0 && (
@@ -579,12 +586,13 @@ function DayColumnCard({
 }
 
 function SortableListColumn({
-  list, activities, isDragging, onSelectActivity, onSelectList,
+  list, activities, isDragging, onSelectActivity, onEditActivity, onSelectList,
 }: {
   list: ScratchList
   activities: Activity[]
   isDragging?: boolean
   onSelectActivity?: (activityId: string, kind: 'day' | 'list', containerId: string) => void
+  onEditActivity?: (activityId: string, kind: 'day' | 'list', containerId: string) => void
   onSelectList?: (listId: string) => void
 }) {
   const { setNodeRef, attributes, listeners, transform, transition } = useSortable({
@@ -602,6 +610,7 @@ function SortableListColumn({
         activities={activities}
         dragHandleProps={{ ...attributes, ...listeners }}
         onSelectActivity={onSelectActivity}
+        onEditActivity={onEditActivity}
         onSelectList={onSelectList}
       />
     </div>
@@ -609,13 +618,14 @@ function SortableListColumn({
 }
 
 function ListColumnCard({
-  list, activities, ghost, dragHandleProps, onSelectActivity, onSelectList,
+  list, activities, ghost, dragHandleProps, onSelectActivity, onEditActivity, onSelectList,
 }: {
   list: ScratchList
   activities?: Activity[]
   ghost?: boolean
   dragHandleProps?: React.HTMLAttributes<HTMLElement>
   onSelectActivity?: (activityId: string, kind: 'day' | 'list', containerId: string) => void
+  onEditActivity?: (activityId: string, kind: 'day' | 'list', containerId: string) => void
   onSelectList?: (listId: string) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `list::${list.id}` })
@@ -661,6 +671,7 @@ function ListColumnCard({
                 key={activity.id}
                 activity={activity}
                 onSelect={() => onSelectActivity?.(activity.id, 'list', list.id)}
+                onEdit={onEditActivity ? () => onEditActivity(activity.id, 'list', list.id) : undefined}
               />
             ))}
             {actList.length === 0 && (
@@ -676,10 +687,11 @@ function ListColumnCard({
 }
 
 function SortableActivity({
-  activity, onSelect,
+  activity, onSelect, onEdit,
 }: {
   activity: Activity
   onSelect: () => void
+  onEdit?: () => void
 }) {
   // Use stable activity.id so dnd-kit can keep tracking the draggable
   // when the live preview re-mounts it under a different column.
@@ -699,18 +711,29 @@ function SortableActivity({
       onClick={onSelect}
       className={`cursor-grab rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm transition hover:border-sky-300 hover:shadow active:cursor-grabbing ${isDragging ? 'opacity-30' : ''}`}
     >
-      <ActivityChip activity={activity} />
+      <ActivityChip activity={activity} onEdit={onEdit} />
     </div>
   )
 }
 
-function ActivityChip({ activity, ghost }: { activity: Activity; ghost?: boolean }) {
+function ActivityChip({ activity, ghost, onEdit }: { activity: Activity; ghost?: boolean; onEdit?: () => void }) {
   const icon = activity.type === 'poi' ? '📍' : activity.type === 'transport' ? '🚌' : '📝'
   return (
     <div className={ghost ? 'rounded-lg border border-sky-300 bg-white px-2.5 py-2 shadow-lg' : ''}>
       <div className="flex items-center gap-1">
         <span className="text-xs">{icon}</span>
         <span className="truncate text-xs font-medium text-slate-700">{activity.title}</span>
+        {onEdit && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onEdit() }}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="ml-auto flex-shrink-0 rounded p-0.5 text-slate-300 hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Edit"
+            title="Edit"
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
+        )}
       </div>
       {(activity.startTime || activity.durationMinutes) && (
         <div className="mt-0.5 pl-4 text-[10px] text-slate-400">

@@ -1,4 +1,4 @@
-import { Clock, GripVertical, MapPin, Plane, PlaneLanding, PlaneTakeoff, StickyNote, Ticket, Truck, Wallet } from 'lucide-react'
+import { Clock, GripVertical, MapPin, Pencil, Plane, PlaneLanding, PlaneTakeoff, StickyNote, Ticket, Truck, Wallet } from 'lucide-react'
 import clsx from 'clsx'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -34,12 +34,13 @@ function overnightSuffix(depIso?: string, arrIso?: string): string {
 }
 
 export default function ActivityCard({
-  activity, index, selected, onSelect,
+  activity, index, selected, onSelect, onEdit,
 }: {
   activity: Activity
   index: number
   selected?: boolean
   onSelect?: () => void
+  onEdit?: () => void
 }) {
   const a = activity
   const isHotel = a.poi?.category === 'hotel' && !!a.hotelCheckIn
@@ -125,6 +126,16 @@ export default function ActivityCard({
             </div>
           )}
         </div>
+        {onEdit && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onEdit() }}
+            className="-mr-1 -mt-1 flex-shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Edit"
+            title="Edit"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
     </div>
   )

@@ -1,3 +1,4 @@
+import { Pencil } from 'lucide-react'
 import type { Activity } from '@/lib/types'
 
 const HOUR_START = 6
@@ -13,10 +14,12 @@ function toMinutes(time: string): number {
 export default function TimelineView({
   activities,
   onSelect,
+  onEdit,
   selectedId,
 }: {
   activities: Activity[]
   onSelect?: (id: string) => void
+  onEdit?: (id: string) => void
   selectedId?: string | null
 }) {
   // Only activities with a startTime can appear on the grid
@@ -70,23 +73,40 @@ export default function TimelineView({
             : 'bg-rose-100 border-rose-400 text-rose-800'
 
           return (
-            <button
+            <div
               key={a.id}
+              role="button"
+              tabIndex={0}
               onClick={() => onSelect?.(a.id)}
-              className={`absolute left-2 right-2 overflow-hidden rounded border px-2 py-1 text-left text-xs transition hover:brightness-95 ${typeColor} ${
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect?.(a.id) } }}
+              className={`absolute left-2 right-2 cursor-pointer overflow-hidden rounded border px-2 py-1 text-left text-xs transition hover:brightness-95 ${typeColor} ${
                 isSelected ? 'ring-2 ring-sky-400' : ''
               }`}
               style={{ top, height }}
               title={a.title}
             >
-              <div className="truncate font-medium">{a.title}</div>
-              {height > 32 && a.startTime && (
-                <div className="opacity-70">
-                  {a.startTime}
-                  {a.durationMinutes ? ` · ${a.durationMinutes}m` : ''}
+              <div className="flex items-start justify-between gap-1">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium">{a.title}</div>
+                  {height > 32 && a.startTime && (
+                    <div className="opacity-70">
+                      {a.startTime}
+                      {a.durationMinutes ? ` · ${a.durationMinutes}m` : ''}
+                    </div>
+                  )}
                 </div>
-              )}
-            </button>
+                {onEdit && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onEdit(a.id) }}
+                    className="flex-shrink-0 rounded p-0.5 opacity-60 hover:bg-white/60 hover:opacity-100"
+                    aria-label="Edit"
+                    title="Edit"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            </div>
           )
         })}
       </div>

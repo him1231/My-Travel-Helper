@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { nanoid } from 'nanoid'
-import { ChevronDown, ChevronLeft, Calendar, Compass, GripVertical, Image as ImageIcon, LayoutGrid, LayoutList, Link2, LogOut, Map as MapIcon, MapPin, MoreVertical, Plus, Printer, StickyNote, Clock, Trash2, UserPlus, X } from 'lucide-react'
+import { ChevronDown, ChevronLeft, Calendar, Compass, GripVertical, Image as ImageIcon, LayoutGrid, LayoutList, Link2, LogOut, Map as MapIcon, MapPin, MoreVertical, Pencil, Plus, Printer, StickyNote, Clock, Trash2, UserPlus, X } from 'lucide-react'
 import Modal from '@/components/Modal'
 import type { DayTabConfig } from '@/components/DayTabs'
 import { DEFAULT_DAY_TAB_CONFIG } from '@/components/DayTabs'
@@ -25,6 +25,7 @@ import TripMap from '@/components/TripMap'
 import TimelineView from '@/components/TimelineView'
 import NearbyDrawer from '@/components/NearbyDrawer'
 import { subscribeTrip, subscribeDays, addDay, removeDay, addActivity, deleteTrip, updateTrip, updateDayNotes, updateDayTitle, reorderActivities, reorderListActivities, reassignDayDates, updateActivity, removeActivity, moveActivityBetweenDays, subscribeScratchLists, addScratchList, renameScratchList, removeScratchList, reorderScratchLists, addActivityToList, updateActivityInList, removeActivityFromList, moveBetweenDayAndList, moveFromListToDay, moveBetweenLists } from '@/lib/firestore/trips'
+import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import type { Trip, Day, Activity, FlightInfo, Money, POI, ScratchList } from '@/lib/types'
 import { todayISO, addDaysISO, formatDateISO, formatMoney, exportIcal } from '@/lib/utils'
 
@@ -90,6 +91,9 @@ export default function TripDetail() {
   const [overviewInitialView, setOverviewInitialView] = useState<'kanban' | 'map'>('kanban')
   const [mapPreviewPOI, setMapPreviewPOI] = useState<POI | null>(null)
   const fetchingRoutesRef = useRef<Set<string>>(new Set())
+  // Dynamic library load — the new Maps JS API doesn't expose DirectionsService
+  // on `google.maps` until the 'routes' library is imported.
+  const routesLib = useMapsLibrary('routes')
   const [scratchLists, setScratchLists] = useState<ScratchList[]>([])
   const [activeTabKind, setActiveTabKind] = useState<'day' | 'list'>('day')
   const [selectedListId, setSelectedListId] = useState<string | null>(null)
@@ -109,6 +113,12 @@ export default function TripDetail() {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   )
+
+  // Click an activity row → focus on map (mobile: switch to map tab).
+  const focusActivityOnMap = (id: string) => {
+    setSelectedActivityId(id)
+    if (typeof window !== 'undefined' && window.innerWidth < 768) setMobileTab('map')
+  }
 
   useEffect(() => {
     if (!tripId) return
@@ -258,8 +268,7 @@ export default function TripDetail() {
   // Auto-fetch drive routes for transport activities that have mode=drive but no polyline,
   // or whose cached polyline was computed against different neighbors.
   useEffect(() => {
-    if (!tripId || !selectedDay) return
-    if (typeof google === 'undefined' || !google.maps?.DirectionsService) return
+    if (!tripId || !selectedDay || !routesLib) return
 
     const neighborKey = (prev: POI, next: POI) =>
       `${prev.lat.toFixed(5)},${prev.lng.toFixed(5)}|${next.lat.toFixed(5)},${next.lng.toFixed(5)}`
@@ -289,16 +298,20 @@ export default function TripDetail() {
     pending.forEach(({ activity, prevPOI, nextPOI, wantKey }) => {
       if (fetchingRoutesRef.current.has(activity.id)) return
       fetchingRoutesRef.current.add(activity.id)
-      const ds = new google.maps.DirectionsService()
+      const ds = new routesLib.DirectionsService()
       ds.route(
         {
           origin: { lat: prevPOI.lat, lng: prevPOI.lng },
           destination: { lat: nextPOI.lat, lng: nextPOI.lng },
-          travelMode: google.maps.TravelMode.DRIVING,
+          travelMode: routesLib.TravelMode.DRIVING,
         },
         async (result, status) => {
           fetchingRoutesRef.current.delete(activity.id)
-          if (status !== 'OK' || !result) return
+          if (status !== 'OK' || !result) {
+            console.warn('DirectionsService failed:', status)
+            toast.error(`Drive route failed: ${status}`)
+            return
+          }
           const polyline: { lat: number; lng: number }[] = []
           result.routes[0].legs.forEach((leg) => {
             leg.steps.forEach((step, i) => {
@@ -318,7 +331,7 @@ export default function TripDetail() {
         },
       )
     })
-  }, [selectedDay, tripId])
+  }, [selectedDay, tripId, routesLib])
 
   if (loading) return <div className="grid h-screen place-items-center text-slate-500">Loading…</div>
   if (missing || !trip || !tripId) {
@@ -939,6 +952,11 @@ export default function TripDetail() {
             onSelectActivity={(activityId, kind, containerId) => {
               if (kind === 'day') { setSelectedDayId(containerId); setActiveTabKind('day') }
               else { setSelectedListId(containerId); setActiveTabKind('list') }
+              setSelectedActivityId(activityId)
+            }}
+            onEditActivity={(activityId, kind, containerId) => {
+              if (kind === 'day') { setSelectedDayId(containerId); setActiveTabKind('day') }
+              else { setSelectedListId(containerId); setActiveTabKind('list') }
               setEditingActivityId(activityId)
             }}
             onSelectDay={handleSelectDayFromOverview}
@@ -978,7 +996,14 @@ export default function TripDetail() {
                   <SortableContext items={localListActivities.map((a) => a.id)} strategy={verticalListSortingStrategy}>
                     <div className="space-y-2">
                       {localListActivities.map((a, i) => (
-                        <ListActivityRow key={a.id} activity={a} index={i} onEdit={() => setEditingActivityId(a.id)} />
+                        <ListActivityRow
+                          key={a.id}
+                          activity={a}
+                          index={i}
+                          selected={selectedActivityId === a.id}
+                          onSelect={() => focusActivityOnMap(a.id)}
+                          onEdit={() => setEditingActivityId(a.id)}
+                        />
                       ))}
                     </div>
                   </SortableContext>
@@ -1085,7 +1110,8 @@ export default function TripDetail() {
                         <TimelineView
                           activities={localActivities}
                           selectedId={selectedActivityId}
-                          onSelect={(id) => { setSelectedActivityId(id); setEditingActivityId(id) }}
+                          onSelect={(id) => focusActivityOnMap(id)}
+                          onEdit={(id) => setEditingActivityId(id)}
                         />
                       ) : (
                         <>
@@ -1125,7 +1151,8 @@ export default function TripDetail() {
                                     activity={a}
                                     index={i}
                                     selected={selectedActivityId === a.id}
-                                    onSelect={() => { setSelectedActivityId(a.id); setEditingActivityId(a.id) }}
+                                    onSelect={() => focusActivityOnMap(a.id)}
+                                    onEdit={() => setEditingActivityId(a.id)}
                                   />
                                 ))}
                               </div>
@@ -1305,7 +1332,7 @@ export default function TripDetail() {
           <TripMap
             activities={activeActivities}
             selectedId={selectedActivityId ?? undefined}
-            onSelectActivity={(id) => { setSelectedActivityId(id); setEditingActivityId(id) }}
+            onSelectActivity={(id) => setSelectedActivityId(id)}
             fallbackCenter={trip.destination ? { lat: trip.destination.lat, lng: trip.destination.lng } : undefined}
             onAddPOI={handleAddPOI}
             previewPOI={mapPreviewPOI}
@@ -1513,7 +1540,7 @@ function HotelBanner({ type, hotelName }: { type: 'checkin' | 'checkout'; hotelN
   )
 }
 
-function ListActivityRow({ activity, index, onEdit }: { activity: Activity; index: number; onEdit: () => void }) {
+function ListActivityRow({ activity, index, selected, onSelect, onEdit }: { activity: Activity; index: number; selected?: boolean; onSelect: () => void; onEdit: () => void }) {
   const icon = activity.type === 'poi' ? '📍' : activity.type === 'flight' ? '✈️' : activity.type === 'transport' ? '🚌' : '📝'
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: activity.id })
   const dndStyle = {
@@ -1525,8 +1552,10 @@ function ListActivityRow({ activity, index, onEdit }: { activity: Activity; inde
     <div
       ref={setNodeRef}
       style={dndStyle}
-      onClick={onEdit}
-      className="cursor-pointer rounded-lg border border-slate-200 bg-white p-3 transition hover:border-amber-300 hover:shadow-sm"
+      onClick={onSelect}
+      className={`cursor-pointer rounded-lg border bg-white p-3 transition hover:shadow-sm ${
+        selected ? 'border-sky-500 ring-2 ring-sky-200' : 'border-slate-200 hover:border-amber-300'
+      }`}
     >
       <div className="flex items-start gap-2">
         <button
@@ -1553,7 +1582,17 @@ function ListActivityRow({ activity, index, onEdit }: { activity: Activity; inde
             <p className="mt-1 line-clamp-2 text-xs text-slate-500">{activity.notes}</p>
           )}
         </div>
-        <span className="flex-shrink-0 text-[10px] text-slate-400">#{index + 1}</span>
+        <div className="flex flex-shrink-0 items-start gap-1">
+          <button
+            onClick={(e) => { e.stopPropagation(); onEdit() }}
+            className="-mt-1 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Edit"
+            title="Edit"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <span className="mt-0.5 text-[10px] text-slate-400">#{index + 1}</span>
+        </div>
       </div>
     </div>
   )
