@@ -164,13 +164,21 @@ function TripMapInner({
 
   // When an activity is selected from the list/timeline/kanban, surface its
   // POI in the bottom sheet — same panel users see after a search-box pick.
-  const selectedPOI = selectedId ? activities.find((a) => a.id === selectedId)?.poi : undefined
+  // Transport items represent a leg between two stops and have no POI of
+  // their own, so dismiss the sheet instead of showing stale content.
+  const selectedActivity = selectedId ? activities.find((a) => a.id === selectedId) : undefined
+  const selectedPOI = selectedActivity?.poi
+  const isTransportSelected = selectedActivity?.type === 'transport'
   const selectedPOIKey = selectedPOI ? `${selectedPOI.placeId ?? ''}|${selectedPOI.lat},${selectedPOI.lng}` : ''
   useEffect(() => {
+    if (isTransportSelected) {
+      setMapPOI(null); setNearbyPOIs([]); setListOpen(false); setHotelPickerOpen(false)
+      return
+    }
     if (!selectedPOI) return
     setMapPOI(selectedPOI); setNearbyPOIs([]); setListOpen(false); setHotelPickerOpen(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPOIKey])
+  }, [selectedId, selectedPOIKey, isTransportSelected])
 
   const addedPlaceIds = useMemo(
     () => new Set(activities.filter((a) => a.poi?.placeId).map((a) => a.poi!.placeId!)),
