@@ -248,6 +248,7 @@ function TripMapInner({
         style={{ width: '100%', height: '100%' }}
       >
         <FitToPoints points={points} fallbackCenter={fallbackCenter} />
+        <FocusSelected activities={activities} selectedId={selectedId} />
         <MapClickHandler
           onPOISelected={(poi) => { setMapPOI(poi); setNearbyPOIs([]); setListOpen(false) }}
           onDismiss={dismissPOI}
@@ -719,5 +720,18 @@ function FitToPoints({ points, fallbackCenter }: { points: POI[]; fallbackCenter
     map.fitBounds(bounds, 80)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, sig])
+  return null
+}
+
+function FocusSelected({ activities, selectedId }: { activities: Activity[]; selectedId?: string }) {
+  const map = useMap()
+  const poi = selectedId ? activities.find((a) => a.id === selectedId)?.poi : undefined
+  const coordKey = poi ? `${poi.lat},${poi.lng}` : ''
+  useEffect(() => {
+    if (!map || !poi) return
+    map.panTo({ lat: poi.lat, lng: poi.lng })
+    if ((map.getZoom() ?? 0) < 15) map.setZoom(15)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, selectedId, coordKey])
   return null
 }
