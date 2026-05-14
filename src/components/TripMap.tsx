@@ -735,13 +735,43 @@ function FitToPoints({ points, fallbackCenter }: { points: POI[]; fallbackCenter
 
 function FocusSelected({ activities, selectedId }: { activities: Activity[]; selectedId?: string }) {
   const map = useMap()
-  const poi = selectedId ? activities.find((a) => a.id === selectedId)?.poi : undefined
-  const coordKey = poi ? `${poi.lat},${poi.lng}` : ''
+  const selectedIdx = selectedId ? activities.findIndex((a) => a.id === selectedId) : -1
+  const selected = selectedIdx >= 0 ? activities[selectedIdx] : undefined
+
+  // For transport: collect the POIs immediately before and after so the map
+  // can fit the leg (the transport activity itself often has no POI).
+  let prevPOI: POI | undefined
+  let nextPOI: POI | undefined
+  if (selected?.type === 'transport') {
+    for (let j = selectedIdx - 1; j >= 0; j--) { if (activities[j].poi) { prevPOI = activities[j].poi; break } }
+    for (let j = selectedIdx + 1; j < activities.length; j++) { if (activities[j].poi) { nextPOI = activities[j].poi; break } }
+  }
+
+  const poi = selected?.poi
+  const focusKey = selected?.type === 'transport'
+    ? `t|${prevPOI ? `${prevPOI.lat},${prevPOI.lng}` : ''}|${nextPOI ? `${nextPOI.lat},${nextPOI.lng}` : ''}`
+    : poi ? `p|${poi.lat},${poi.lng}` : ''
+
   useEffect(() => {
-    if (!map || !poi) return
-    map.panTo({ lat: poi.lat, lng: poi.lng })
-    if ((map.getZoom() ?? 0) < 15) map.setZoom(15)
+    if (!map) return
+    if (selected?.type === 'transport' && (prevPOI || nextPOI)) {
+      if (prevPOI && nextPOI) {
+        const bounds = new google.maps.LatLngBounds()
+        bounds.extend({ lat: prevPOI.lat, lng: prevPOI.lng })
+        bounds.extend({ lat: nextPOI.lat, lng: nextPOI.lng })
+        map.fitBounds(bounds, 80)
+      } else {
+        const only = (prevPOI ?? nextPOI)!
+        map.panTo({ lat: only.lat, lng: only.lng })
+        if ((map.getZoom() ?? 0) < 15) map.setZoom(15)
+      }
+      return
+    }
+    if (poi) {
+      map.panTo({ lat: poi.lat, lng: poi.lng })
+      if ((map.getZoom() ?? 0) < 15) map.setZoom(15)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, selectedId, coordKey])
+  }, [map, selectedId, focusKey])
   return null
 }
